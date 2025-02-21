@@ -1,4 +1,8 @@
-% Test Script to give to the students, March 2015
+% Test Script to give to the students, March 2015]
+
+
+
+teamName = ''; %enter the name of the folder
 %% Continuous Position Estimator Test Script
 % This function first calls the function "positionEstimatorTraining" to get
 % the relevant modelParameters, and then calls the function
