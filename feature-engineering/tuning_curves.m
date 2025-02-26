@@ -1,3 +1,5 @@
+
+load("monkeydata_training.mat")
 % Define the reaching angles (in degrees)
 angles_deg = [30, 70, 110, 150, 190, 230, 310, 350];
 num_angles = length(angles_deg);
@@ -49,3 +51,14 @@ for i = 1:num_neurons
 end
 
 sgtitle('Tuning Curves for Each Neuron');
+
+
+row_std = std(meanRates, 0, 2); % Compute standard deviation along the rows
+
+% Plot the bar chart
+figure;
+bar(row_std);
+xlabel('Neuron Number');
+ylabel('Standard Deviation');
+title('Standard Deviation of Each Neuron');
+grid on;
