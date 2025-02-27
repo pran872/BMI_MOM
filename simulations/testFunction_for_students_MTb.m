@@ -1,9 +1,7 @@
 % Test Script to give to the students, March 2015]
 
-
-
-teamName = ''; %enter the name of the folder
-%% Continuous Position Estimator Test Script
+% teamName = 'KNN'; %enter the name of the folder
+% %% Continuous Position Estimator Test Script
 % This function first calls the function "positionEstimatorTraining" to get
 % the relevant modelParameters, and then calls the function
 % "positionEstimator" to decode the trajectory. 
@@ -20,8 +18,8 @@ ix = randperm(length(trial));
 addpath(teamName);
 
 % Select training and testing data (you can choose to split your data in a different way if you wish)
-trainingData = trial(ix(1:50),:);
-testData = trial(ix(51:end),:);
+trainingData = trial(ix(1:80),:);
+testData = trial(ix(81:end),:);
 
 fprintf('Testing the continuous position estimator...')
 
