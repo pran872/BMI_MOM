@@ -6,14 +6,103 @@ function modelParameters = positionEstimatorTraining(trainingData)
     [Xtrain, Ytrain] = buildFeaturesPartialLDA(trainingData, modelParameters.binSize, ...
         modelParameters.historyBins, modelParameters.normalize, 'train');
 
-    modelParameters.classificationModel = fitcdiscr(Xtrain(:, 2:end), Ytrain); % BUILT IN FUNCTION CHANGE IT
+    modelParameters.classificationModel = trainLDA(Xtrain(:, 2:end), Ytrain); % BUILT IN FUNCTION CHANGE IT
+
     
     % Evaluate on training set
-    trainPreds = predict(modelParameters.classificationModel, Xtrain(:, 2:end));
+    trainPreds = predictLDA(finalModel, Xtrain(:, 2:end));
     finalTrainAcc = mean(trainPreds == Ytrain);
     disp(['Final train accuracy: ', num2str(finalTrainAcc * 100, '%.2f'), '%']);
     
     modelParameters.regressionModels = trainAngleSpecificSVRModels();
+end
+
+function ldaModel = trainLDA(X, Y)
+    % trainLDA - Manually implements Linear Discriminant Analysis (LDA)
+    %
+    % Inputs:
+    %   X - Feature matrix (samples x features)
+    %   Y - Class labels (samples x 1)
+    %
+    % Outputs:
+    %   ldaModel - Struct containing projection matrix and class statistics
+
+    classes = unique(Y);
+    numClasses = length(classes);
+    numFeatures = size(X, 2);
+
+    % Compute overall mean
+    meanTotal = mean(X, 1);
+
+    % Initialize scatter matrices
+    Sw = zeros(numFeatures, numFeatures); % Within-class scatter
+    Sb = zeros(numFeatures, numFeatures); % Between-class scatter
+
+    % Store class means and priors
+    classMeans = zeros(numClasses, numFeatures);
+    classPriors = zeros(numClasses, 1);
+
+    for i = 1:numClasses
+        classData = X(Y == classes(i), :);
+        classMean = mean(classData, 1);
+        classMeans(i, :) = classMean;
+        classPriors(i) = size(classData, 1) / size(X, 1);
+
+        % Compute within-class scatter
+        classScatter = (classData - classMean)' * (classData - classMean);
+        Sw = Sw + classScatter;
+        
+        % Compute between-class scatter
+        meanDiff = (classMean - meanTotal)';
+        Sb = Sb + size(classData, 1) * (meanDiff * meanDiff');
+    end
+
+    % Solve the generalized eigenvalue problem
+    [eigVecs, eigVals] = eig(Sb, Sw);
+    [~, sortedIdx] = sort(diag(eigVals), 'descend');
+    W = eigVecs(:, sortedIdx); % Projection matrix
+
+    % Store trained LDA model
+    ldaModel.W = W;
+    ldaModel.classMeans = classMeans;
+    ldaModel.classPriors = classPriors;
+    ldaModel.classes = classes;
+end
+
+function [predictions, predScores] = predictLDA(ldaModel, Xtest)
+    % predictLDA - Uses trained LDA model to classify new samples and return raw LDA scores
+    %
+    % Inputs:
+    %   ldaModel - Struct containing LDA projection matrix & class statistics
+    %   Xtest - New data (samples x features)
+    %
+    % Outputs:
+    %   predictions - Predicted class labels
+    %   predScores - Raw LDA scores (negative Mahalanobis distance to each class mean)
+
+    % Project data into LDA space
+    projectedData = Xtest * ldaModel.W;
+
+    % Compute Mahalanobis distance to class means
+    numClasses = size(ldaModel.classMeans, 1);
+    numSamples = size(Xtest, 1);
+    distances = zeros(numSamples, numClasses);
+
+    for i = 1:numClasses
+        classMeanProj = ldaModel.classMeans(i, :) * ldaModel.W;
+        distances(:, i) = sum((projectedData - classMeanProj).^2, 2);
+    end
+
+    % Assign class with the smallest distance
+    [~, minIdx] = min(distances, [], 2);
+    predictions = ldaModel.classes(minIdx);
+    
+    % Convert distances to scores (negative distances so that higher means better match)
+    predScores = -distances;
+    
+    % Apply softmax normalization to predScores to avoid overfitting to train data
+    predScores = exp(predScores - max(predScores, [], 2));  % Prevent numerical instability
+    predScores = predScores ./ sum(predScores, 2);
 end
 
 function [X, Y] = buildFeaturesPartialLDA(data, binSize, historyBins, leftoverNormalize, mode)
