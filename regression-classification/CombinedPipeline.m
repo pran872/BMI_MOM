@@ -35,7 +35,7 @@ function performPCA()
     global trainingData numPCs pcaCoeff pcaMean
     
     % Define maximum PCs to retain
-    numPCs = 50;
+    numPCs = 80;
     
     % Collect all spike data into a matrix for PCA
     allSpikes = collectAllSpikes(trainingData);
