@@ -52,7 +52,7 @@ function [decodedPosX, decodedPosY, newParams] = positionEstimator(past_current_
     if isempty(lastPosition)
         lastPosition = past_current_trial.startHandPos(1:2);
     else
-        lastPosition = 0.7*newPos + 0.3*lastPosition; % Smoothing
+        lastPosition = newPos;
     end
     
     decodedPosX = lastPosition(1);
