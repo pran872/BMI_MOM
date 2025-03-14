@@ -152,8 +152,8 @@ function [X, Y] = buildFeaturesPartialLDA(data, binSize, historyBins, leftoverNo
                 % Process leftover bin if exists
                 if leftover > 0.5*binSize
                     bin_start = nFull * binSize + 1;
-                    ed = Tms;
-                    seg = rawSpikes(:, st:ed);
+                    bin_end = Tms;
+                    seg = rawSpikes(:, bin_start:bin_end);
                     partialMean = mean(seg, 2);
                     
                     % Apply normalization if requested
