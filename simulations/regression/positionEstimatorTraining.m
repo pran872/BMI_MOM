@@ -1,28 +1,24 @@
 function modelParameters = positionEstimatorTraining(trainingData)
     % Parameters
-    classifierBinSize = 20;        % 20ms bins
+    classifierBinSize = 20;        % 20ms bins for classifier
     classifierWindowSize = 300;    % 300ms analysis window
-    regressorBinSize = 20;       
+    regressorBinSize = 20;         % Matching regressor params
     regressorWindowSize = 300;
-    stepSize = 20;                 % 20ms window sliding step
     
     [numTrials, numAngles] = size(trainingData);
     numNeurons = size(trainingData(1,1).spikes, 1);
 
-    %% 1. Enhanced Classifier Training with Sliding Windows
-    [classifierFeatures, validFeatures, featureMask] = preprocessSlidingWindows(trainingData, ...
-        classifierBinSize, classifierWindowSize, stepSize);
+    %% 1. Classifier Training with Feature Tracking
+    [classifierFeatures, validFeatures, featureMask] = preprocessClassifierFeatures(trainingData, classifierBinSize, classifierWindowSize);
+    classifierLabels = repelem(1:numAngles, numTrials)';
     
-    classifierLabels = repmat(repelem(1:numAngles, numTrials)', classifierWindowSize/stepSize, 1);
-    
-    % Train regularized discriminant classifier
+    % Train regularized LDA
     classifier = fitcdiscr(classifierFeatures, classifierLabels, ...
-        'DiscrimType', 'pseudoLinear', ...
-        'Gamma', 0.4, ...
-        'Delta', 1e-4, ...
+        'DiscrimType', 'diagLinear', ...
+        'Gamma', 0.3, ...
         'Prior', 'uniform');
 
-    %% 2. Regressor Training (Unchanged)
+    %% 2. Regressor Training
     regressors = cell(1, numAngles);
     for dir = 1:numAngles
         [allFeat, allPos] = preprocessForRegression(trainingData(:, dir), regressorBinSize, regressorWindowSize);
@@ -40,46 +36,36 @@ function modelParameters = positionEstimatorTraining(trainingData)
             'windowSize', regressorWindowSize);
     end
 
-    %% 3. Model Packaging
+    %% 3. Store Feature Metadata
     modelParameters = struct(...
         'classifier', classifier, ...
         'regressors', {regressors}, ...
         'featureMask', featureMask, ...
-        'windowParams', struct('binSize', classifierBinSize, ...
-                              'windowSize', classifierWindowSize, ...
-                              'stepSize', stepSize), ...
-        'trainingSamplesPerTrial', classifierWindowSize/stepSize);
+        'expectedFeatures', size(classifierFeatures, 2), ...
+        'classifierParams', struct('binSize', classifierBinSize, 'windowSize', classifierWindowSize));
 end
 
-function [features, validFeatures, featureMask] = preprocessSlidingWindows(data, binSize, windowSize, stepSize)
-    % Extract overlapping windows from entire trial duration
+function [features, validFeatures, featureMask] = preprocessClassifierFeatures(data, binSize, windowSize)
+    % Feature extraction and selection
     numNeurons = size(data(1,1).spikes, 1);
     features = [];
     
-    windowBins = windowSize/binSize;
-    stepBins = stepSize/binSize;
-    
+    % 1. Extract raw features
     for angle = 1:size(data,2)
         for trial = 1:size(data,1)
-            spikes = data(trial,angle).spikes;
-            [fr, totalBins] = preprocessSpikes(spikes, binSize);
-            
-            % Extract sliding windows
-            for startBin = 1:stepBins:(totalBins - windowBins + 1)
-                endBin = startBin + windowBins - 1;
-                windowData = fr(:, startBin:endBin);
-                features = [features; windowData(:)']; %#ok<AGROW>
-            end
+            spikes = data(trial,angle).spikes(:,1:windowSize);
+            [fr, ~] = preprocessSpikes(spikes, binSize);
+            features = [features; fr(:)']; 
         end
     end
     
-    % Feature selection
+    % 2. Feature selection
     featVars = var(features);
-    validFeatures = featVars > 1e-4;
+    validFeatures = featVars > 1e-6; % Threshold for minimum variance
     features = features(:, validFeatures);
     
-    % Create feature mask for real-time alignment
-    featureMask = false(1, numNeurons*windowBins);
+    % 3. Create full feature mask
+    featureMask = false(1, numNeurons*(windowSize/binSize));
     featureMask(1:length(validFeatures)) = validFeatures;
 end
 
@@ -88,4 +74,20 @@ function [fr, bins] = preprocessSpikes(spikes, binSize)
     bins = floor(T / binSize);
     spikesBinned = sum(reshape(spikes(:,1:bins*binSize), size(spikes,1), binSize, []), 2);
     fr = (1000 / binSize) * permute(spikesBinned, [1,3,2]);
+end
+
+function [allFeat, allPos] = preprocessForRegression(trials, binSize, windowSize)
+    allFeat = []; allPos = [];
+    windowBins = windowSize / binSize;
+    
+    for tr = 1:numel(trials)
+        [fr, binCount] = preprocessSpikes(trials(tr).spikes, binSize);
+        handPos = trials(tr).handPos(1:2, :);
+        
+        for t = windowBins:binCount-1
+            featVec = fr(:, t-windowBins+1:t);
+            allFeat = [allFeat; featVec(:)'];
+            allPos = [allPos; handPos(:, t*binSize)'];
+        end
+    end
 end

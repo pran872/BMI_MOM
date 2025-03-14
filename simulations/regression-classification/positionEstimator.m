@@ -1,32 +1,61 @@
-function [x, y] = positionEstimator(test_data, modelParameters)
-    classification_model = modelParameters.classificationModel;
-    regression_models = modelParameters.regressionModels;
+function [decodedPosX, decodedPosY, newParams] = positionEstimator(past_current_trial, modelParams)
+    persistent lastPosition;
     
-    classificationPreds = predict(classification_model, x);
-
-    regression
-
-
+    %% 1. Feature Alignment
+    % Get parameters from model
+    mask = modelParams.featureMask;
+    expectedFeatures = modelParams.expectedFeatures;
+    classifierParams = modelParams.classifierParams;
     
-end
-
-function rmse = evaluateAngleSpecificSVR(data, models)
-    global bestParams
+    % Extract raw features
+    currentSpikes = past_current_trial.spikes;
+    [fr, ~] = preprocessSpikes(currentSpikes, classifierParams.binSize);
+    rawFeatures = fr(:)';
     
-    [~, numAngles] = size(data);
-    allPreds = [];
-    allTrueY = [];
-    
-    for angle = 1:numAngles
-        [Xtest, Ytest] = buildFeatures(data, bestParams.binSize, bestParams.historyBins, bestParams.normalize, angle);
-        if isempty(Xtest), continue; end
-        
-        predX = predict(models{angle}.svrX, Xtest);
-        predY = predict(models{angle}.svrY, Xtest);
-        
-        allPreds = [allPreds; predX, predY];
-        allTrueY = [allTrueY; Ytest];
+    % Pad/crop features to match training dimensions
+    if length(rawFeatures) > length(mask)
+        processedFeatures = rawFeatures(1:length(mask));
+    else
+        paddedFeatures = zeros(1, length(mask));
+        paddedFeatures(1:length(rawFeatures)) = rawFeatures;
+        processedFeatures = paddedFeatures;
     end
     
-    rmse = sqrt(mean(sum((allTrueY - allPreds).^2, 2)));
+    % Apply feature mask
+    finalFeatures = processedFeatures(mask);
+    
+    %% 2. Continuous Classification
+    try
+        predictedDir = predict(modelParams.classifier, finalFeatures);
+    catch
+        predictedDir = 1; % Fallback to first direction
+    end
+    
+    %% 3. Position Regression
+    try
+        regressor = modelParams.regressors{predictedDir};
+        [fr, binCount] = preprocessSpikes(currentSpikes, regressor.binSize);
+        
+        windowBins = regressor.windowSize / regressor.binSize;
+        t = max(windowBins, binCount);
+        featVec = fr(:, t-windowBins+1:t);
+        
+        % Project and predict
+        featCentered = featVec(:)' - regressor.mu;
+        decodedPos = [featCentered * regressor.projMatrix, 1] * regressor.Beta;
+        newPos = decodedPos';
+    catch
+        newPos = lastPosition; % Fallback to last position
+    end
+    
+    %% 4. Maintain State
+    if isempty(lastPosition)
+        lastPosition = past_current_trial.startHandPos(1:2);
+    else
+        lastPosition = 0.7*newPos + 0.3*lastPosition; % Smoothing
+    end
+    
+    decodedPosX = lastPosition(1);
+    decodedPosY = lastPosition(2);
+    newParams = modelParams;
 end

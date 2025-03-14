@@ -1,105 +1,108 @@
-function [x, y, modelParameters] = positionEstimator(test_data, modelParameters)
-% positionEstimator:
-%   1) Gathers classification feature => picks angle => accumulates confidence
-%   2) Gathers regression feature => picks that angle's regModel => gets x,y
-%   3) Returns x,y, updates modelParameters for next call
-%
-% ARGS:
-%   test_data: struct with .spikes => (neurons x T)
-%   modelParameters: from trainPipeline, plus .angleConf for confidence
-%
-% OUTPUT:
-%   [x,y], updated modelParameters (the function returns it, or you can store it with assignin)
-
-    %% if first call, define angleConf
-    if ~isfield(modelParameters, 'angleConf')
-        K= length(modelParameters.regModels);
-        modelParameters.angleConf= zeros(1,K);
+function [decodedPosX, decodedPosY, newParams] = positionEstimator(past_current_trial, modelParams)
+    persistent lastPosition;
+    
+    %% 1. Feature Alignment
+    % Get parameters from model
+    mask = modelParams.featureMask;
+    expectedFeatures = modelParams.expectedFeatures;
+    classifierParams = modelParams.classifierParams;
+    
+    % Extract raw features
+    currentSpikes = past_current_trial.spikes;
+    [fr, ~] = preprocessSpikes(currentSpikes, classifierParams.binSize);
+    rawFeatures = fr(:)';
+    
+    % Pad/crop features to match training dimensions
+    if length(rawFeatures) > length(mask)
+        processedFeatures = rawFeatures(1:length(mask));
+    else
+        paddedFeatures = zeros(1, length(mask));
+        paddedFeatures(1:length(rawFeatures)) = rawFeatures;
+        processedFeatures = paddedFeatures;
     end
-
-    % Some user-chosen constants
-    confidenceDecay = 0.98;
-    voteIncrement   = 1.0;
-
-    %% =========== A) Classification pipeline (No PCA) ===========
-    [angleWinner] = runClassifier(test_data.spikes, modelParameters);
-
-    % angleConf update
-    modelParameters.angleConf = modelParameters.angleConf * confidenceDecay;
-    modelParameters.angleConf(angleWinner) = modelParameters.angleConf(angleWinner)+ voteIncrement;
-    [~, bestAngle] = max(modelParameters.angleConf);
-
-    %% =========== B) Regression pipeline (No PCA) ===========
-    [xhat, yhat] = runRegressor(test_data.spikes, bestAngle, modelParameters);
-
-    x= xhat; 
-    y= yhat;
+    
+    % Apply feature mask
+    finalFeatures = processedFeatures(mask);
+    
+    %% 2. Continuous Classification
+    try
+        predictedDir = predict(modelParams.classifier, finalFeatures);
+    catch
+        predictedDir = 1; % Fallback to first direction
+    end
+    
+    %% 3. Position Regression
+    try
+        regressor = modelParams.regressors{predictedDir};
+        [fr, binCount] = preprocessSpikes(currentSpikes, regressor.binSize);
+        
+        windowBins = regressor.windowSize / regressor.binSize;
+        t = max(windowBins, binCount);
+        featVec = fr(:, t-windowBins+1:t);
+        
+        % Project and predict
+        featCentered = featVec(:)' - regressor.mu;
+        decodedPos = [featCentered * regressor.projMatrix, 1] * regressor.Beta;
+        newPos = decodedPos';
+    catch
+        newPos = lastPosition; % Fallback to last position
+    end
+    
+    %% 4. Maintain State
+    if isempty(lastPosition)
+        lastPosition = past_current_trial.startHandPos(1:2);
+    else
+        lastPosition = 0.7*newPos + 0.3*lastPosition; % Smoothing
+    end
+    
+    decodedPosX = lastPosition(1);
+    decodedPosY = lastPosition(2);
+    newParams = modelParams;
 end
 
-%% ------------------------------------------------------------------------
-function angleWinner = runClassifier(spikes, modelParams)
-% runClassifier: uses binSizeC, historyBinsC, meansC, and modelParams.classifierModel
-    binSizeC     = modelParams.binSizeC;
-    historyBinsC = modelParams.historyBinsC;
-    meansC       = modelParams.neuronMeansC;
-    svmAngle     = modelParams.classifierModel;  % we stored as 'classifierModel' or 'svmAngle'
-
-    T   = size(spikes,2);
-    totalBinsC= floor(T/binSizeC);
-    if totalBinsC < historyBinsC
-        angleWinner=1;
-        return;
+function [features, validFeatures, featureMask] = preprocessClassifierFeatures(data, binSize, windowSize)
+    % Feature extraction and selection
+    numNeurons = size(data(1,1).spikes, 1);
+    features = [];
+    
+    % 1. Extract raw features
+    for angle = 1:size(data,2)
+        for trial = 1:size(data,1)
+            spikes = data(trial,angle).spikes(:,1:windowSize);
+            [fr, ~] = preprocessSpikes(spikes, binSize);
+            features = [features; fr(:)']; 
+        end
     end
-
-    featClass= zeros(1, historyBinsC*size(spikes,1),'single');
-    colPos=1;
-    for h=0:(historyBinsC-1)
-        b= totalBinsC-h;
-        st= (b-1)*binSizeC+1;
-        ed= b* binSizeC;
-        seg= spikes(:, st:ed);
-        meanBin= mean(seg,2)- meansC;
-        nN= size(spikes,1);
-        featClass(colPos: colPos+nN-1)= single(meanBin);
-        colPos= colPos+ nN;
-    end
-
-    % pick angle
-    anglePred= predict(svmAngle, featClass);
-    angleWinner= double(anglePred);
+    
+    % 2. Feature selection
+    featVars = var(features);
+    validFeatures = featVars > 1e-6; % Threshold for minimum variance
+    features = features(:, validFeatures);
+    
+    % 3. Create full feature mask
+    featureMask = false(1, numNeurons*(windowSize/binSize));
+    featureMask(1:length(validFeatures)) = validFeatures;
 end
 
-function [x,y] = runRegressor(spikes, angleID, modelParams)
-% runRegressor: uses binSizeR, historyBinsR, meansR, modelParams.regModels{angleID}
-    binSizeR     = modelParams.binSizeR;
-    historyBinsR = modelParams.historyBinsR;
-    meansR       = modelParams.neuronMeansR;
-    regModels    = modelParams.regModels;
+function [fr, bins] = preprocessSpikes(spikes, binSize)
+    T = size(spikes, 2);
+    bins = floor(T / binSize);
+    spikesBinned = sum(reshape(spikes(:,1:bins*binSize), size(spikes,1), binSize, []), 2);
+    fr = (1000 / binSize) * permute(spikesBinned, [1,3,2]);
+end
 
-    T= size(spikes,2);
-    totalBinsR= floor(T/ binSizeR);
-    if totalBinsR< historyBinsR
-        x=0; y=0; return;
+function [allFeat, allPos] = preprocessForRegression(trials, binSize, windowSize)
+    allFeat = []; allPos = [];
+    windowBins = windowSize / binSize;
+    
+    for tr = 1:numel(trials)
+        [fr, binCount] = preprocessSpikes(trials(tr).spikes, binSize);
+        handPos = trials(tr).handPos(1:2, :);
+        
+        for t = windowBins:binCount-1
+            featVec = fr(:, t-windowBins+1:t);
+            allFeat = [allFeat; featVec(:)'];
+            allPos = [allPos; handPos(:, t*binSize)'];
+        end
     end
-
-    featReg= zeros(1, historyBinsR*size(spikes,1),'single');
-    colPos=1;
-    for hh=0:(historyBinsR-1)
-        b= totalBinsR - hh;
-        st= (b-1)* binSizeR+1;
-        ed= b* binSizeR;
-        seg= spikes(:, st:ed);
-        meanBin= mean(seg,2)- meansR;
-        nN= size(spikes,1);
-        featReg(colPos: colPos+nN-1)= single(meanBin);
-        colPos= colPos+ nN;
-    end
-
-    chosenReg = regModels{angleID};
-    if isempty(chosenReg)
-        x=0; y=0; return;
-    end
-
-    x= predict(chosenReg.svmX, featReg);
-    y= predict(chosenReg.svmY, featReg);
 end
