@@ -8,6 +8,22 @@ function modelParameters = positionEstimatorTraining(trainingData)
     [numTrials, numAngles] = size(trainingData);
     numNeurons = size(trainingData(1,1).spikes, 1);
 
+    %% 1. Train Initial General Regressor (NEW)
+    [initFeat, initPos] = preprocessInitialRegressor(trainingData, regressorBinSize, 100);
+    [coeff, score, ~, ~, explained] = pca(initFeat);
+    numComponents = find(cumsum(explained) >= 95, 1, 'first');
+    Xb = [score(:,1:numComponents), ones(size(score,1),1)];
+    BetaInit = Xb \ initPos;
+
+    %% 2. Store Initial Regressor in Model (NEW)
+    modelParameters.initRegressor = struct(...
+        'projMatrix', coeff(:,1:numComponents), ...
+        'Beta', BetaInit, ...
+        'mu', mean(initFeat), ...
+        'binSize', regressorBinSize, ...
+        'windowSize', regressorWindowSize);
+
+
     %% 1. Classifier Training with Feature Tracking
     [classifierFeatures, validFeatures, featureMask] = preprocessClassifierFeatures(trainingData, classifierBinSize, classifierWindowSize);
     classifierLabels = repelem(1:numAngles, numTrials)';
@@ -88,6 +104,26 @@ function [allFeat, allPos] = preprocessForRegression(trials, binSize, windowSize
             featVec = fr(:, t-windowBins+1:t);
             allFeat = [allFeat; featVec(:)'];
             allPos = [allPos; handPos(:, t*binSize)'];
+        end
+    end
+end
+
+
+function [allFeat, allPos] = preprocessInitialRegressor(data, binSize, maxBins)
+    % NEW: Collects first maxBins from all trials/directions
+    allFeat = []; allPos = [];
+    for angle = 1:size(data,2)
+        for trial = 1:size(data,1)
+            [fr, ~] = preprocessSpikes(data(trial,angle).spikes, binSize);
+            handPos = data(trial,angle).handPos(1:2,:);
+            
+            % Use first maxBins or available bins
+            useBins = min(size(fr,2), maxBins);
+            feat = fr(:,1:useBins);
+            pos = handPos(:,1:useBins*binSize);
+            
+            allFeat = [allFeat; feat(:)'];
+            allPos = [allPos; pos'];
         end
     end
 end
