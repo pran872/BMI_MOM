@@ -28,27 +28,54 @@ function ClassificationPipelineNoBuiltin()
     bestParams.normalize = 0;
 
     % Build features with best parameters
-    [Xtrain, Ytrain] = buildFeaturesPartialLDA(trainingData, bestParams.binSize, ...
-                                            bestParams.historyBins, bestParams.normalize, 'train');
+    [Xtrain, Ytrain] = buildFeatures(trainingData, bestParams.binSize, ...
+        bestParams.historyBins, bestParams.normalize);
+
+    [Xtrain_red, V_reduced, X_mean, X_std] = pcaReduction(Xtrain, 0.95);
     
     % Train final LDA model
-    % finalModel = fitcdiscr(Xtrain(:, 2:end), Ytrain); % BUILT IN FUNCTION CHANGE IT
-    finalModel = trainLDA(Xtrain(:, 2:end), Ytrain); % BUILT IN FUNCTION CHANGE IT
+    finalModel = trainLDA(Xtrain_red, Ytrain);
     
     % Evaluate on training set
-    % trainPreds = predict(finalModel, Xtrain(:, 2:end));
-    trainPreds = predictLDA(finalModel, Xtrain(:, 2:end));
+    trainPreds = predictLDA(finalModel, Xtrain_red);
     finalTrainAcc = mean(trainPreds == Ytrain);
     disp(['Final train accuracy: ', num2str(finalTrainAcc * 100, '%.2f'), '%']);
     
     % Evaluate on test set
-    [finalTestAcc, binAccVec] = iterativeTestLDA(testData, finalModel, bestParams.binSize, ...
+    [finalTestAcc, binAccVec] = iterativeTestLDA(testData, finalModel, V_reduced, X_mean, X_std, bestParams.binSize, ...
                                                 bestParams.historyBins, bestParams.normalize);
     disp(['Final test accuracy: ', num2str(finalTestAcc * 100, '%.2f'), '%']);
 
 
     %% Helper Classification Functions
-function [testAcc, binAccVec] = iterativeTestLDA(data, ldaModel, binSize, historyBins, leftoverNormalize)
+
+    function [Xpca, V_reduced, X_mean, X_std] = pcaReduction(X, varianceThreshold)
+        X_mean = mean(X, 1);
+        X_std = std(X, [], 1);
+        X_std(X_std == 0) = 1; % Wherever std is 0, make it 1 so no zero error
+        X_norm = (X - X_mean)./X_std;
+
+        % U - eigenvectors (PCs)
+        [U, S, V] = svd(X_norm, 'econ');
+        singular_values = diag(S);
+        explained_var = (singular_values .^ 2) / sum(singular_values .^ 2);
+        cum_var = cumsum(explained_var);
+    
+        numPCs = find(cum_var >= varianceThreshold, 1, 'first');
+        V_reduced = V(:, 1:numPCs);
+    
+        disp("Size of X_norm: "), disp(size(X_norm));
+        disp("Size of V_reduced: "), disp(size(V_reduced));
+    
+        Xpca = X_norm * V_reduced;
+    
+        disp("Original Feature Size:"), disp(size(X))
+        disp("Reduced Feature Size:"), disp(size(Xpca))
+        disp("Number of PCs Retained:"), disp(numPCs)
+    
+    end
+
+function [testAcc, binAccVec] = iterativeTestLDA(data, ldaModel, V_reduced, X_mean, X_std, binSize, historyBins, leftoverNormalize)
 % Performs iterative classification over time using an accumulating angle probability distribution.
 % Confidence over the correct angle increases steadily.
 
@@ -102,7 +129,13 @@ function [testAcc, binAccVec] = iterativeTestLDA(data, ldaModel, binSize, histor
                 window = binned(:, b-historyBins+1 : b);
                 featRow = reshape(window, 1, []);
 
-                [predLabel, predScores] = predictLDA(ldaModel, featRow); % Get raw LDA scores
+
+                featRow = (featRow - X_mean) ./ X_std;
+                featRow(isnan(featRow)) = 0;
+
+                featRow_pca = featRow * V_reduced;
+
+                [predLabel, predScores] = predictLDA(ldaModel, featRow_pca); % Get raw LDA scores
                 predScores = predScores - min(predScores);  % Shift scores to be non-negative
                 predProbs = predScores ./ sum(predScores);  % Normalize scores instead of exp()
 
@@ -234,120 +267,101 @@ function [predictions, predScores] = predictLDA(ldaModel, Xtest)
 end
 
     
-    function [X, Y] = buildFeaturesPartialLDA(data, binSize, historyBins, leftoverNormalize, mode)
-        % buildFeaturesPartialLDA:
-        %  For each trial, we create partial bins, each bin includes spiking data => (numNeurons x 1).
-        %  We scale partial leftover bin if leftoverNormalize==true. 
-        %  For bin t in [1.. nb], we have "previousAngle" = 
-        %    - if t=1 => 0 
-        %    - if t>1 => the *label* from bin t-1 if mode='train'
-        %
-        % Inputs:
-        %   data              - Trial data structure
-        %   binSize           - Size of bins in ms
-        %   historyBins       - Number of history bins to include
-        %   leftoverNormalize - Whether to normalize leftover bins
-        %   mode              - 'train' or 'test'
-        %
-        % Outputs:
-        %   X - Feature matrix: [previousAngle, spikingFeatures]
-        %   Y - Angle labels
-        
-            [numTrials, numAngles] = size(data);
-            numNeurons = size(data(1, 1).spikes, 1);
-        
-            bigX = {};
-            bigY = {};
-            for a = 1:numAngles
-                for tr = 1:numTrials
-                    rawSpikes = data(tr, a).spikes;
-                    Tms = size(rawSpikes, 2);
-        
-                    % Calculate number of full and partial bins
-                    nFull = floor(Tms / binSize);
-                    leftover = Tms - nFull * binSize;
-                    nb = nFull + (leftover > 0);
-        
-                    % Create binned data
-                    binned = zeros(numNeurons, nb, 'single');
-                    
-                    % Process full bins
-                    for b = 1:nFull
-                        st = (b-1) * binSize + 1;
-                        ed = b * binSize;
-                        seg = rawSpikes(:, st:ed);
-                        binned(:, b) = mean(seg, 2);
-                    end
-                    
-                    % Process leftover bin if exists
-                    if leftover > 0.5*binSize
-                        st = nFull * binSize + 1;
-                        ed = Tms;
-                        seg = rawSpikes(:, st:ed);
-                        partialMean = mean(seg, 2);
-                        
-                        % Apply normalization if requested
-                        if leftoverNormalize
-                            ratio = binSize / leftover;
-                            partialMean = partialMean * ratio;
-                        end
-                        
-                        binned(:, nb) = partialMean;
-                    end
-        
-                    locX = [];
-                    locY = [];
-                    
-                    % Build sliding window features
-                    for b = 1:nb
-                        if b < historyBins
-                            % Skip if we can't form a full window
-                            continue;
-                        end
-                        
-                        % Extract window of data
-                        window = binned(:, b-historyBins+1 : b);
-                        featRow = reshape(window, 1, []);
-                        
-                        % Determine previous angle feature
-                        if b == 1
-                            prevAngle = 0;  % No previous angle for first bin
-                        else
-                            if strcmpi(mode, 'train')
-                                % Teacher forcing - use true label from bin t-1
-                                prevAngle = a; 
-                            else
-                                % For test data building, placeholder (will be replaced in iterative decoding)
-                                prevAngle = 0; 
-                            end
-                        end
-        
-                        % Store features and label
-                        locX = [locX; [prevAngle, featRow]]; %#ok<AGROW>
-                        locY = [locY; a]; %#ok<AGROW>
-                    end
-                    
-                    bigX{end+1} = locX;
-                    bigY{end+1} = locY;
+function [X, Y] = buildFeatures(data, binSize, historyBins, leftoverNormalize)
+    %  For each trial, we create partial bins, each bin includes spiking data => (numNeurons x 1).
+    %
+    % Inputs:
+    %   data              - Trial data structure
+    %   binSize           - Size of bins in ms
+    %   historyBins       - Number of history bins to include
+    %   leftoverNormalize - Whether to normalize leftover bins
+    %
+    % Outputs:
+    %   X - Feature matrix: (totalBins, spikingFeatures) 
+    %           totalBins is across all trials
+    %           spikingFeatures is historyBins * numNeurons -> mean spike rate
+    %   Y - Angle labels: (totalBins, 1)
+
+        [numTrials, numAngles] = size(data); % 50 trials x 8 angles
+        numNeurons = size(data(1, 1).spikes, 1); % 98 neurons
+    
+        bigX = {};
+        bigY = {};
+        for angle = 1:numAngles
+            for trial = 1:numTrials
+                rawSpikes = data(trial, angle).spikes;
+                timeMs = size(rawSpikes, 2); % time is around 600ms (no cropping)
+    
+                nFull = floor(timeMs / binSize); % no of full bins
+                leftover = timeMs - nFull * binSize; % no of leftover time stamps 
+                numBins = nFull + (leftover > 0); % total no of bins
+
+                % For each bin, computes the mean no of spikes for each neuron - Mean Spike Rate
+                binned = zeros(numNeurons, numBins, 'single');
+                for b = 1:nFull
+                    bin_start = (b-1) * binSize + 1;
+                    bin_end = b * binSize;
+                    seg = rawSpikes(:, bin_start:bin_end);
+                    binned(:, b) = mean(seg, 2);
                 end
-            end
-            
-            % Combine all trials into single matrices
-            totalRows = sum(cellfun(@(x) size(x, 1), bigX));
-            dimFeat = size(bigX{1}, 2);
-            X = zeros(totalRows, dimFeat, 'single');
-            Y = zeros(totalRows, 1, 'int32');
-        
-            rowPos = 1;
-            for i = 1:length(bigX)
-                blockX = bigX{i};
-                blockY = bigY{i};
-                nB = size(blockX, 1);
-                X(rowPos:rowPos+nB-1, :) = blockX;
-                Y(rowPos:rowPos+nB-1) = blockY;
-                rowPos = rowPos + nB;
+                
+                % Process leftover bin if exists and if greater than half the binSize
+                if leftover > 0.5*binSize
+                    bin_start = nFull * binSize + 1;
+                    bin_end = timeMs;
+                    seg = rawSpikes(:, bin_start:bin_end);
+                    partialMean = mean(seg, 2);
+                    
+                    % Apply normalization if needed
+                    if leftoverNormalize
+                        ratio = binSize / leftover;
+                        partialMean = partialMean * ratio;
+                    end
+                    
+                    binned(:, numBins) = partialMean;
+                end
+    
+                locX = [];
+                locY = [];
+                
+                % Build sliding window features
+                for b = 1:numBins
+                    if b < historyBins
+                        % Skip if can't form a full window
+                        continue;
+                    end
+                    
+                    % Get window of data
+                    window = binned(:, b-historyBins+1 : b); % (98 neurons x history_bin_size)
+                    featRow = reshape(window, 1, []);
+    
+                    % Store features and label
+                    locX = [locX; featRow]; % Data to train for classification
+                    locY = [locY; angle]; % Ground truth label for classification - my angles 
+                end
+                % locX is of size (no_of_bins x feat row) wherein no_of_bins varies as each trial is of different lengths
+                % feat row is of size (1, 1176) wherein 1176 = number of neurons (98) * history_bin_size (12)
+                bigX{end+1} = locX; % size is (1, numTrials*numAngles)
+                bigY{end+1} = locY; % size is (1, numTrials*numAngles)
             end
         end
+        
+        % Combine all trials into single matrices
+        totalBins = sum(cellfun(@(x) size(x, 1), bigX)); % Total no of bins across all trials = 4369
+        dimFeat = size(bigX{1}, 2); % this 1176 (numNeurons*history_bin_size)
+        X = zeros(totalBins, dimFeat, 'single');
+        Y = zeros(totalBins, 1, 'int32');
+        rowPos = 1;
+        for i = 1:length(bigX)
+            blockX = bigX{i};
+            blockY = bigY{i};
+            numBins = size(blockX, 1);
+            X(rowPos:rowPos+numBins-1, :) = blockX;
+            Y(rowPos:rowPos+numBins-1) = blockY;
+            rowPos = rowPos + numBins;
+        end
+    end
+
 
     %% Helper Regression Functions
     
