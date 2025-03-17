@@ -1,51 +1,23 @@
-function [decodedPosX, decodedPosY, newParams] = positionEstimator(past_current_trial, modelParams, trueDirec, trueHandPos)
+function [decodedPosX, decodedPosY, newParams] = positionEstimator(past_current_trial, modelParams)
     persistent lastPosition;
     
-    %% 1. Feature Alignment
-    % Get parameters from model
+    %% 1. Get Features
     mask = modelParams.featureMask;
-    % expectedFeatures = modelParams.expectedFeatures;
     classifierParams = modelParams.classifierParams;
     pcaParams = modelParams.classifierPCA;
     
-    % Extract raw features
     currentSpikes = past_current_trial.spikes;
     [fr, ~] = preprocessSpikes(currentSpikes, classifierParams.binSize);
-    rawFeatures = fr(:)';
+    features = fr(:)';
+    finalFeatures = features(mask);
     
-    % Pad/crop features to match training dimensions
-    if length(rawFeatures) > length(mask)
-        processedFeatures = rawFeatures(1:length(mask));
-    else
-        paddedFeatures = zeros(1, length(mask));
-        paddedFeatures(1:length(rawFeatures)) = rawFeatures;
-        processedFeatures = paddedFeatures;
-    end
-
-    % Apply feature mask
-    finalFeatures = processedFeatures(mask);
-    
-     %% **2. PCA Transformation for Classification**
-    % Standardize using training mean & std, then apply PCA
-    finalFeatures = (finalFeatures - pcaParams.X_mean) ./ pcaParams.X_std;
-    finalFeatures(isnan(finalFeatures)) = 0;  % Handle NaN values
-
-    % % Project features onto PCA space
+     %% 2. Classification
+    finalFeatures = (finalFeatures - pcaParams.X_mean)./ pcaParams.X_std;
+    finalFeatures(isnan(finalFeatures)) = 0;
     finalFeaturesPCA = finalFeatures * pcaParams.projMatrix;
 
-    %% **3. Predict Movement Direction Using LDA**
     predictedDir = predictLDA(modelParams.classifier, finalFeaturesPCA);
-
-    
-    %% 2. Continuous Classification
-    % predictedDir = predictLDA(modelParams.classifier, finalFeatures);
-
-    if predictedDir == trueDirec
-        modelParams.classificationAccPlus = modelParams.classificationAccPlus + 1;
-    else
-        modelParams.classificationAccMinus = modelParams.classificationAccMinus + 1;
-    end    
-    
+ 
     %% 3. Position Regression
     try
         regressor = modelParams.regressors{predictedDir};
@@ -54,16 +26,17 @@ function [decodedPosX, decodedPosY, newParams] = positionEstimator(past_current_
         windowBins = regressor.windowSize / regressor.binSize;
         t = max(windowBins, binCount);
         featVec = fr(:, t-windowBins+1:t);
-        
-        % Project and predict
-        featCentered = featVec(:)' - regressor.mu;
+        featCentered = (featVec(:)' - regressor.mu)./ regressor.std;
         decodedPos = [featCentered * regressor.projMatrix, 1] * regressor.Beta;
         newPos = decodedPos';
+
     catch
         disp("Error in regression")
         newPos = lastPosition; % Fallback to last position
     end
-    %% 4. Maintain State
+
+
+    %% 4. Last State
     if isempty(lastPosition)
         disp("lastPosiition is empty")
         lastPosition = past_current_trial.startHandPos(1:2);
@@ -73,35 +46,7 @@ function [decodedPosX, decodedPosY, newParams] = positionEstimator(past_current_
     
     decodedPosX = lastPosition(1);
     decodedPosY = lastPosition(2);
-
-    % disp([decodedPosX, trueHandPos(1)])
-    % disp([decodedPosY, trueHandPos(2)])
-    % skdjls
     newParams = modelParams;
-end
-
-function [features, validFeatures, featureMask] = preprocessClassifierFeatures(data, binSize, windowSize)
-    % Feature extraction and selection
-    numNeurons = size(data(1,1).spikes, 1);
-    features = [];
-    
-    % 1. Extract raw features
-    for angle = 1:size(data,2)
-        for trial = 1:size(data,1)
-            spikes = data(trial,angle).spikes(:,1:windowSize);
-            [fr, ~] = preprocessSpikes(spikes, binSize);
-            features = [features; fr(:)']; 
-        end
-    end
-    
-    % 2. Feature selection
-    featVars = var(features);
-    validFeatures = featVars > 1e-6; % Threshold for minimum variance
-    features = features(:, validFeatures);
-    
-    % 3. Create full feature mask
-    featureMask = false(1, numNeurons*(windowSize/binSize));
-    featureMask(1:length(validFeatures)) = validFeatures;
 end
 
 function [fr, bins] = preprocessSpikes(spikes, binSize)
@@ -111,46 +56,20 @@ function [fr, bins] = preprocessSpikes(spikes, binSize)
     fr = (1000 / binSize) * permute(spikesBinned, [1,3,2]);
 end
 
-function [allFeat, allPos] = preprocessForRegression(trials, binSize, windowSize)
-    allFeat = []; allPos = [];
-    windowBins = windowSize / binSize;
-    
-    for tr = 1:numel(trials)
-        [fr, binCount] = preprocessSpikes(trials(tr).spikes, binSize);
-        handPos = trials(tr).handPos(1:2, :);
-        
-        for t = windowBins:binCount-1
-            featVec = fr(:, t-windowBins+1:t);
-            allFeat = [allFeat; featVec(:)'];
-            allPos = [allPos; handPos(:, t*binSize)'];
-        end
-    end
-end
-
 function predictedDir = predictLDA(ldaModel, Xtest)
-    % predictLDA - Uses a trained LDA model to classify new samples
-    %
-    % Inputs:
-    %   ldaModel - Struct containing LDA projection matrix & class statistics
-    %   Xtest - New data (samples x features)
-    %
-    % Outputs:
-    %   predictedDir - Predicted class labels for input samples
-    
-    % Project data into LDA space
     projectedData = Xtest * ldaModel.W;
 
-    % Compute Mahalanobis distance to class means
     numClasses = size(ldaModel.classMeans, 1);
     numSamples = size(Xtest, 1);
     distances = zeros(numSamples, numClasses);
 
+    %Mahalanobis distance
     for i = 1:numClasses
-        classMeanProj = ldaModel.classMeans(i, :) * ldaModel.W;  % Project class mean
-        distances(:, i) = sum((projectedData - classMeanProj).^2, 2); % Squared Mahalanobis distance
+        classMeanProj = ldaModel.classMeans(i, :) * ldaModel.W;  
+        distances(:, i) = sum((projectedData - classMeanProj).^2, 2);
     end
 
-    % Assign class with the smallest distance
+    %Assign class with the smallest distance
     [~, minIdx] = min(distances, [], 2);
     predictedDir = ldaModel.classes(minIdx);
 end
