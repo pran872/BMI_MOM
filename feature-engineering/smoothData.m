@@ -1,8 +1,8 @@
 function [processedOutput] = smoothData(data, binSize, filterType, filterConfig)
 %----------------------------------------------------------------------
-% PROCESSNEURALSIGNALS - Transforms neural spike trains into processed firing rates
+% SMOOTHDATA - Transforms neural spike trains into processed firing rates
 %
-% Syntax:  [processedOutput] = processNeuralSignals(data, binSize, filterType, filterConfig)
+% Syntax:  [processedOutput] = smoothData(data, binSize, filterType, filterConfig)
 %
 % Inputs:
 %   data          - Matrix of neural spike data arranged by trials and angles
@@ -22,10 +22,7 @@ function [processedOutput] = smoothData(data, binSize, filterType, filterConfig)
 %   processedOutput - Structure with binned and filtered neural activity
 %
 % Example:
-%   processedData = processNeuralSignals(spikeData, 25, 'gaussianFilter', [9, 2]);
-%
-% Author: (Your Name)
-% Date: (Current Date)
+%   processedData = smoothData(spikeData, 25, 'gaussianFilter', [9, 2]);
 %----------------------------------------------------------------------
 
 % Initialize output structure
@@ -105,21 +102,54 @@ for angleIdx = 1:numAngles
                     end
                     
                 case 'medianfilter'
-                    % Median filter for outlier rejection
+                    % Median filter implementation without using medfilt1
                     filterSpan = filterConfig(1);
                     if mod(filterSpan, 2) == 0
                         filterSpan = filterSpan + 1; % Ensure odd window size
                     end
-                    filteredProfile = medfilt1(cellProfile, filterSpan);
+                    
+                    halfSpan = floor(filterSpan/2);
+                    paddedProfile = [repmat(cellProfile(1), [1, halfSpan]), ...
+                                     cellProfile, ...
+                                     repmat(cellProfile(end), [1, halfSpan])];
+                    
+                    filteredProfile = zeros(1, numBins);
+                    for i = 1:numBins
+                        window = paddedProfile(i:i+filterSpan-1);
+                        filteredProfile(i) = median(window);
+                    end
                     
                 case 'polyfit'
-                    % Savitzky-Golay polynomial filter
+                    % Custom polynomial smoothing implementation without sgolayfilt
                     windowLength = filterConfig(1);
                     polyDegree = filterConfig(2);
+                    
                     if mod(windowLength, 2) == 0
                         windowLength = windowLength + 1; % Ensure odd window size
                     end
-                    filteredProfile = sgolayfilt(cellProfile, polyDegree, windowLength);
+                    
+                    halfWindow = floor(windowLength/2);
+                    filteredProfile = zeros(1, numBins);
+                    
+                    % Pad the signal for edge handling
+                    paddedProfile = [repmat(cellProfile(1), [1, halfWindow]), ...
+                                    cellProfile, ...
+                                    repmat(cellProfile(end), [1, halfWindow])];
+                    
+                    % Apply polynomial fitting for each point
+                    for i = 1:numBins
+                        % Extract window around the current point
+                        windowIndices = (i:i+windowLength-1);
+                        y = paddedProfile(windowIndices);
+                        x = (1:windowLength)';
+                        
+                        % Fit polynomial of specified degree
+                        p = polyfit(x, y, polyDegree);
+                        
+                        % Evaluate at center point
+                        centerIdx = halfWindow + 1;
+                        filteredProfile(i) = polyval(p, centerIdx);
+                    end
                     
                 case 'nofilter'
                     % No filtering applied
