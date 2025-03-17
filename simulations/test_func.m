@@ -2,7 +2,7 @@
 clc; clear all; close all;
 
 
-teamName = '/Users/pranathipoojary/Imperial/BMI/BMI_MOM/simulations/regression_new'; %enter the name of the folder
+teamName = '/Users/pranathipoojary/Imperial/BMI/BMI_MOM/simulations/best_model'; %enter the name of the folder
 
 
 RMSE = testFunction_for_students_MTb(teamName)
@@ -38,7 +38,7 @@ function RMSE = testFunction_for_students_MTb(teamName)
     
     for tr=1:size(testData,1)
         fprintf('Decoding block %d/%d\n', tr, size(testData,1));
-        
+
         for direc=randperm(8) 
             decodedHandPos = [];
             times=320:20:size(testData(tr,direc).spikes,2);
