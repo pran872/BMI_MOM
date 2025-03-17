@@ -14,7 +14,7 @@ function modelParameters = positionEstimatorTraining(trainingData)
     classifierLabels = repelem(1:numAngles, numTrials)';
 
     % **Apply PCA**
-    [classifierFeaturesPCA, V_reduced, X_mean, X_std] = pcaReduction(classifierFeatures, 0.95, 'classification');
+    [classifierFeaturesPCA, V_reduced, X_mean, X_std] = pcaReductionClassification(classifierFeatures, 0.95, 'classification');
 
     % Train LDA with PCA-reduced features
     classifier = trainLDA(classifierFeaturesPCA, classifierLabels);
@@ -30,17 +30,33 @@ function modelParameters = positionEstimatorTraining(trainingData)
         [allFeat, allPos] = preprocessForRegression(trainingData(:, dir), regressorBinSize, regressorWindowSize);
         
         % Apply PCA for regressor training
-        [Xpca, V_reduced_reg, X_mean_reg, X_std_reg] = pcaReduction(allFeat, 0.85, 'regression');
+        [Xpca, V_reduced_reg, X_mean_reg] = pcaReductionRegression(allFeat, 0.95, 'regression');
         Beta = Xpca \ allPos;
         % disp(size(X_mean_reg))
         regressors{dir} = struct(...
             'projMatrix', V_reduced_reg, ...
             'Beta', Beta, ...
             'mu', X_mean_reg, ...
-            'X_std_reg', X_std_reg, ...
             'binSize', regressorBinSize, ...
             'windowSize', regressorWindowSize);
     end
+    %% 2. Regressor Training
+    % regressors = cell(1, numAngles);
+    % for dir = 1:numAngles
+    %     [allFeat, allPos] = preprocessForRegression(trainingData(:, dir), regressorBinSize, regressorWindowSize);
+        
+    %     [coeff, score, ~, ~, explained, mu] = pca(allFeat);
+    %     numComponents = find(cumsum(explained) >= 95, 1, 'first');
+    %     Xb = [score(:,1:numComponents), ones(size(score,1),1)];
+    %     Beta = Xb \ allPos;
+        
+    %     regressors{dir} = struct(...
+    %         'projMatrix', coeff(:,1:numComponents), ...
+    %         'Beta', Beta, ...
+    %         'mu', mu, ...
+    %         'binSize', regressorBinSize, ...
+    %         'windowSize', regressorWindowSize);
+    % end
 
     %% **3. Store Model Parameters**
     modelParameters = struct(...
@@ -146,7 +162,7 @@ function ldaModel = trainLDA(X, Y)
 end
 
 
-function [Xpca, V_reduced, X_mean, X_std] = pcaReduction(X, varianceThreshold, mode)
+function [Xpca, V_reduced, X_mean, X_std] = pcaReductionClassification(X, varianceThreshold, mode)
 
     disp(mode)
     disp(size(X))
@@ -180,6 +196,35 @@ function [Xpca, V_reduced, X_mean, X_std] = pcaReduction(X, varianceThreshold, m
     disp("Number of PCs Retained:"), disp(numPCs)
 end
 
+function [Xpca, V_reduced, X_mean] = pcaReductionRegression(X, varianceThreshold, mode)
+    % Center Data (Remove Mean Only, No Standardization)
+    X_mean = mean(X, 1);
+    X_centered = X - X_mean;
+
+    % Perform Singular Value Decomposition (SVD)
+    [U, S, V] = svd(X_centered, 'econ');
+
+    % Compute explained variance
+    singular_values = diag(S);
+    explained_var = (singular_values .^ 2) / sum(singular_values .^ 2);
+    cum_var = cumsum(explained_var);
+
+    % Determine number of components to keep
+    numPCs = find(cum_var >= varianceThreshold, 1, 'first');
+
+    % Select principal components
+    V_reduced = V(:, 1:numPCs);
+
+    % Project data onto PCA space
+    % Xpca = X_centered * V_reduced;
+    Xpca = [X_centered * V_reduced, ones(size(X,1),1)]; % Add bias column
+
+
+    % Display results
+    disp("Original Feature Size:"), disp(size(X))
+    disp("Reduced Feature Size:"), disp(size(Xpca))
+    disp("Number of PCs Retained:"), disp(numPCs)
+end
 
 
 function [fr, bins] = preprocessSpikes(spikes, binSize)
