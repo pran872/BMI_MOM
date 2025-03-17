@@ -35,6 +35,7 @@ function ClassificationPipelineNoBuiltin()
     
     % Train final LDA model
     finalModel = trainLDA(Xtrain_red, Ytrain);
+    disp(size(Xtrain_red)) %(4369 x 933)
     
     % Evaluate on training set
     trainPreds = predictLDA(finalModel, Xtrain_red);

@@ -62,7 +62,9 @@ function [features, validFeatures, featureMask] = preprocessClassifierFeatures(d
     % 2. Feature selection
     featVars = var(features);
     validFeatures = featVars > 1e-6; % Threshold for minimum variance
+    disp(['Before filtering: ', num2str(size(features, 1)), ' x ', num2str(size(features, 2))]);
     features = features(:, validFeatures);
+    disp(['After filtering: ', num2str(size(features, 1)), ' x ', num2str(size(features, 2))]);
     
     % 3. Create full feature mask
     featureMask = false(1, numNeurons*(windowSize/binSize));

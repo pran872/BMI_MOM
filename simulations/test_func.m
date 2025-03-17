@@ -2,7 +2,7 @@
 clc; clear all; close all;
 
 
-teamName = 'simulations/regression'; %enter the name of the folder
+teamName = '/Users/pranathipoojary/Imperial/BMI/BMI_MOM/simulations/regression_new'; %enter the name of the folder
 
 
 RMSE = testFunction_for_students_MTb(teamName)
@@ -40,6 +40,7 @@ function RMSE = testFunction_for_students_MTb(teamName)
     set(exampleFig, 'Position', [100 100 800 600]);
     
     for tr=1:size(testData,1)
+    % for tr=1:1
         fprintf('Decoding block %d/%d\n', tr, size(testData,1));
         for direc=randperm(8) 
             decodedHandPos = [];
@@ -50,8 +51,18 @@ function RMSE = testFunction_for_students_MTb(teamName)
                 past_current_trial.spikes = testData(tr,direc).spikes(:,1:t); 
                 past_current_trial.decodedHandPos = decodedHandPos;
                 past_current_trial.startHandPos = testData(tr,direc).handPos(1:2,1); 
+
+                if nargout('positionEstimator') == 3
+                    [decodedPosX, decodedPosY, newParameters] = positionEstimator(...
+                        past_current_trial, ...
+                        modelParameters, ...
+                        direc, ...
+                        testData(tr,direc).handPos(1:2,t));
+                    modelParameters = newParameters;
+                elseif nargout('positionEstimator') == 2
+                    [decodedPosX, decodedPosY] = positionEstimator(past_current_trial, modelParameters);
+                end
                 
-                [decodedPosX, decodedPosY] = positionEstimator(past_current_trial, modelParameters);
                 decodedPos = [decodedPosX; decodedPosY];
                 decodedHandPos = [decodedHandPos decodedPos];
                 
@@ -83,7 +94,9 @@ function RMSE = testFunction_for_students_MTb(teamName)
             n_predictions = n_predictions+length(times);
         end
     end
-    
+    disp(modelParameters.classificationAccPlus)
+    disp(modelParameters.classificationAccMinus)
+    disp(["Classification Accuracy:", num2str(modelParameters.classificationAccPlus/(modelParameters.classificationAccPlus+modelParameters.classificationAccMinus))])
     figure(1)
     legend('Decoded', 'Actual')
     RMSE = sqrt(meanSqError/n_predictions);
