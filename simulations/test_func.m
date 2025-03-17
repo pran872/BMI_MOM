@@ -39,8 +39,8 @@ function RMSE = testFunction_for_students_MTb(teamName)
     exampleFig = figure(2);
     set(exampleFig, 'Position', [100 100 800 600]);
     
-    for tr=1:size(testData,1)
-    % for tr=1:1
+    % for tr=1:size(testData,1)
+    for tr=1:1
         fprintf('Decoding block %d/%d\n', tr, size(testData,1));
         for direc=randperm(8) 
             decodedHandPos = [];

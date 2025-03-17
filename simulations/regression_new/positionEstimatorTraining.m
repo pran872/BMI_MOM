@@ -14,7 +14,7 @@ function modelParameters = positionEstimatorTraining(trainingData)
     classifierLabels = repelem(1:numAngles, numTrials)';
 
     % **Apply PCA**
-    [classifierFeaturesPCA, V_reduced, X_mean, X_std] = pcaReduction(classifierFeatures, 0.95);
+    [classifierFeaturesPCA, V_reduced, X_mean, X_std] = pcaReduction(classifierFeatures, 0.95, 'classification');
 
     % Train LDA with PCA-reduced features
     classifier = trainLDA(classifierFeaturesPCA, classifierLabels);
@@ -30,13 +30,14 @@ function modelParameters = positionEstimatorTraining(trainingData)
         [allFeat, allPos] = preprocessForRegression(trainingData(:, dir), regressorBinSize, regressorWindowSize);
         
         % Apply PCA for regressor training
-        [Xpca, V_reduced_reg, X_mean_reg, X_std_reg] = pcaReduction(allFeat, 0.95);
+        [Xpca, V_reduced_reg, X_mean_reg, X_std_reg] = pcaReduction(allFeat, 0.85, 'regression');
         Beta = Xpca \ allPos;
-        
+        % disp(size(X_mean_reg))
         regressors{dir} = struct(...
             'projMatrix', V_reduced_reg, ...
             'Beta', Beta, ...
             'mu', X_mean_reg, ...
+            'X_std_reg', X_std_reg, ...
             'binSize', regressorBinSize, ...
             'windowSize', regressorWindowSize);
     end
@@ -145,7 +146,10 @@ function ldaModel = trainLDA(X, Y)
 end
 
 
-function [Xpca, V_reduced, X_mean, X_std] = pcaReduction(X, varianceThreshold)
+function [Xpca, V_reduced, X_mean, X_std] = pcaReduction(X, varianceThreshold, mode)
+
+    disp(mode)
+    disp(size(X))
     % Normalize Data
     X_mean = mean(X, 1);
     X_std = std(X, [], 1);

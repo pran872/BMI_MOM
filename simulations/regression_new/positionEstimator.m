@@ -47,22 +47,47 @@ function [decodedPosX, decodedPosY, newParams] = positionEstimator(past_current_
     end    
     
     %% 3. Position Regression
-    try
-        regressor = modelParams.regressors{trueDirec};
-        [fr, binCount] = preprocessSpikes(currentSpikes, regressor.binSize);
-        
-        windowBins = regressor.windowSize / regressor.binSize;
-        t = max(windowBins, binCount);
-        featVec = fr(:, t-windowBins+1:t);
-        
-        % Project and predict
-        featCentered = featVec(:)' - regressor.mu;
-        decodedPos = [featCentered * regressor.projMatrix, 1] * regressor.Beta;
-        newPos = decodedPos';
-    catch
-        disp("Error in regression")
-        newPos = lastPosition; % Fallback to last position
-    end
+    % try
+    regressor = modelParams.regressors{trueDirec};
+    [fr, binCount] = preprocessSpikes(currentSpikes, regressor.binSize);
+    
+    windowBins = regressor.windowSize / regressor.binSize;
+    t = max(windowBins, binCount);
+        % Ensure `featVec` has correct dimensions
+    featVec = fr(:, t-windowBins+1:t);  % (numNeurons x windowBins)
+    featVec = featVec(:)';  % Reshape into (1, numNeurons * windowBins)
+    
+    % Center the feature vector using PCA mean
+    % disp(size(featVec))
+    % disp(max(regressor.mu))
+    % disp(trueHandPos)
+    % disp(regressor.mu(1, 50))
+    % disp(size(regressor.X_std_reg))
+    % disp(size(regressor.Beta))
+    % ksjfld
+    % featCentered = (featVec - regressor.mu);  % Ensure (1, numFeatures)
+    featCentered = (featVec - regressor.mu) ./ regressor.X_std_reg;
+
+    % featCentered = featVec;
+
+    % Apply PCA transformation
+    featPCA = featCentered * regressor.projMatrix;  % (1, numPCs)
+
+    % Predict hand position
+    decodedPos = featPCA * regressor.Beta;  % (1, 2)
+
+    newPos = decodedPos';  % (2,1) -> [X; Y]
+    
+    % featVec = fr(:, t-windowBins+1:t);
+    
+    % % Project and predict
+    % featCentered = featVec(:)' - regressor.mu;
+    % decodedPos = [featCentered * regressor.projMatrix, 1] * regressor.Beta;
+    % newPos = decodedPos';
+    % catch
+    %     disp("Error in regression")
+    %     newPos = lastPosition; % Fallback to last position
+    % end
     
     %% 4. Maintain State
     if isempty(lastPosition)
@@ -75,8 +100,9 @@ function [decodedPosX, decodedPosY, newParams] = positionEstimator(past_current_
     decodedPosX = lastPosition(1);
     decodedPosY = lastPosition(2);
 
-    % disp([decodedPosX, decodedPosY])
-    % disp([trueHandPos(1), trueHandPos(2)])
+    disp([decodedPosX, decodedPosY])
+    disp([trueHandPos(1), trueHandPos(2)])
+    % skdjls
     newParams = modelParams;
 end
 
