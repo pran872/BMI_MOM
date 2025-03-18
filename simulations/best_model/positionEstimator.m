@@ -1,88 +1,93 @@
 function [decodedPosX, decodedPosY, newParams] = positionEstimator(past_current_trial, modelParams)
     persistent lastPosition;
-    
-    %% 1. Get Features
-    mask = modelParams.featureMask;
-    classifierParams = modelParams.classifierParams;
-    pcaParams = modelParams.classifierPCA;
-    
-    currentSpikes = past_current_trial.spikes;
-    [fr, ~] = preprocessSpikes(currentSpikes, classifierParams.binSize);
-    features = fr(:)';
-    finalFeatures = features(mask);
-    
-     %% 2. Classification
-    finalFeatures = (finalFeatures - pcaParams.X_mean)./ pcaParams.X_std;
-    finalFeatures(isnan(finalFeatures)) = 0;
-    finalFeaturesPCA = finalFeatures * pcaParams.projMatrix;
-
-    predictedDir = predictLDA(modelParams.classifier, finalFeaturesPCA);
- 
-    %% 3. Position Regression
-    try
-        regressor = modelParams.regressors{predictedDir};
-        [fr, binCount] = preprocessSpikes(currentSpikes, regressor.binSize);
-        
-        windowBins = regressor.windowSize / regressor.binSize;
-        t = max(windowBins, binCount);
-        featVec = fr(:, t-windowBins+1:t);
-        featCentered = (featVec(:)' - regressor.mu)./ regressor.std;
-        decodedPos = [featCentered * regressor.projMatrix, 1] * regressor.Beta;
-        newPos = decodedPos';
-
-    catch
-        disp("Error in regression")
-        newPos = lastPosition; % Fallback to last position
-    end
-
-
-    %% 4. Last State
-    if isempty(lastPosition)
-        disp("lastPosiition is empty")
-        lastPosition = past_current_trial.startHandPos(1:2);
-    else
-        lastPosition = newPos;
-    end
-    
-    %% 4. Check Distance to Target Centroid (Stopping Condition)
     if isempty(past_current_trial.decodedHandPos)
-        lastPosition = past_current_trial.startHandPos(1:2);
-        decodedPosX = newPos(1);
-        decodedPosY = newPos(2);
+        decodedPosX = past_current_trial.startHandPos(1);
+        decodedPosY = past_current_trial.startHandPos(2);
     else
-        last_x = past_current_trial.decodedHandPos(1, end);
-        last_y = past_current_trial.decodedHandPos(2, end);
+        %% 1. Get Features
+        mask = modelParams.featureMask;
+        classifierParams = modelParams.classifierParams;
+        pcaParams = modelParams.classifierPCA;
         
-    
-        % Compute distances to all centroids
-        distances = sqrt((modelParams.centroids_x - last_x).^2 + (modelParams.centroids_y - last_y).^2);
-    
-        % Find the nearest centroid (closest movement direction)
-        [min_distance, closest_idx] = min(distances);
-    
+        currentSpikes = past_current_trial.spikes;
+        [fr, ~] = preprocessSpikes(currentSpikes, classifierParams.binSize);
+        features = fr(:)';
+        finalFeatures = features(mask);
         
-        % Define stopping radius threshold (e.g., 5 mm)
-        % Compute centroid std-based radius
-        stopping_radius = 20;
+        %% 2. Classification
+        finalFeatures = (finalFeatures - pcaParams.X_mean)./ pcaParams.X_std;
+        finalFeatures(isnan(finalFeatures)) = 0;
+        finalFeaturesPCA = finalFeatures * pcaParams.projMatrix;
+
+        predictedDir = predictLDA(modelParams.classifier, finalFeaturesPCA);
     
-        % Check if the movement should stop
-        if min_distance < stopping_radius
-            alpha = 0.25;  % Convergence factor (adjustable for smoother/slower movement)
-            beta = 0.1;   % Additional damping factor to reduce abrupt stops
+        %% 3. Position Regression
+        try
+            regressor = modelParams.regressors{predictedDir};
+            [fr, binCount] = preprocessSpikes(currentSpikes, regressor.binSize);
+            
+            windowBins = regressor.windowSize / regressor.binSize;
+            t = max(windowBins, binCount);
+            featVec = fr(:, t-windowBins+1:t);
+            featCentered = (featVec(:)' - regressor.mu)./ regressor.std;
+            decodedPos = [featCentered * regressor.projMatrix, 1] * regressor.Beta;
+            newPos = decodedPos';
 
-            % Compute directional movement towards centroid
-            dx = newPos(1) - modelParams.centroids_x(closest_idx);
-            dy = newPos(2) - modelParams.centroids_y(closest_idx);
+        catch
+            disp("Error in regression")
+            newPos = lastPosition; % Fallback to last position
+        end
 
-            decodedPosX = modelParams.centroids_x(closest_idx) + alpha * dx + beta * sign(dx) * min(abs(dx), stopping_radius);
-            decodedPosY = modelParams.centroids_y(closest_idx) + alpha * dy + beta * sign(dy) * min(abs(dy), stopping_radius);
-            % decodedPosY = modelParams.centroids_y(closest_idx);
-            % newPos = lastPosition; % Keep position static
+
+        %% 4. Last State
+        if isempty(lastPosition)
+            disp("lastPosiition is empty")
+            decodedPosX = past_current_trial.startHandPos(1);
+            decodedPosY = past_current_trial.startHandPos(2);
         else
-            decodedPosX = newPos(1);
-            decodedPosY = newPos(2);
+            lastPosition = newPos;
+        end
+        
+        %% 4. Check Distance to Target Centroid (Stopping Condition)
+        if isempty(past_current_trial.decodedHandPos)
+            lastPosition = past_current_trial.startHandPos(1:2);
+            
+        else
+            last_x = past_current_trial.decodedHandPos(1, end);
+            last_y = past_current_trial.decodedHandPos(2, end);
+            
+        
+            % Compute distances to all centroids
+            distances = sqrt((modelParams.centroids_x - last_x).^2 + (modelParams.centroids_y - last_y).^2);
+        
+            % Find the nearest centroid (closest movement direction)
+            [min_distance, closest_idx] = min(distances);
+        
+            
+            % Define stopping radius threshold (e.g., 5 mm)
+            % Compute centroid std-based radius
+            stopping_radius = 20;
+        
+            % Check if the movement should stop
+            if min_distance < stopping_radius
+                alpha = 0.25;  % Convergence factor (adjustable for smoother/slower movement)
+                beta = 0.1;   % Additional damping factor to reduce abrupt stops
+
+                % Compute directional movement towards centroid
+                dx = newPos(1) - modelParams.centroids_x(closest_idx);
+                dy = newPos(2) - modelParams.centroids_y(closest_idx);
+
+                decodedPosX = modelParams.centroids_x(closest_idx) + alpha * dx + beta * sign(dx) * min(abs(dx), stopping_radius);
+                decodedPosY = modelParams.centroids_y(closest_idx) + alpha * dy + beta * sign(dy) * min(abs(dy), stopping_radius);
+                % decodedPosY = modelParams.centroids_y(closest_idx);
+                % newPos = lastPosition; % Keep position static
+            else
+                decodedPosX = newPos(1);
+                decodedPosY = newPos(2);
+            end
         end
     end
+    
     newParams = modelParams;
 end
 
