@@ -38,6 +38,10 @@ function modelParameters = positionEstimatorTraining(trainingData)
             'binSize', regressorBinSize, ...
             'windowSize', regressorWindowSize);
     end
+    
+    [centroids_x,centroids_y] = computecentroids(trainingData);   
+
+   
 
     %% 3. Return Model Parameters
     modelParameters = struct(...
@@ -47,6 +51,8 @@ function modelParameters = positionEstimatorTraining(trainingData)
             'X_mean', X_mean_cls, ...
             'X_std', X_std_cls), ...
         'regressors', {regressors}, ...
+        'centroids_x', centroids_x, ...
+        'centroids_y', centroids_y, ...
         'featureMask', featureMask, ...
         'expectedFeatures', size(classifierFeaturesPCA, 2), ...
         'classifierParams', struct('binSize', classifierBinSize, 'windowSize', classifierWindowSize));%, ...
@@ -172,4 +178,29 @@ function [allFeat, allPos] = preprocessForRegression(trials, binSize, windowSize
         end
     end
 end
+
+function [centroids_x,centroids_y] = computecentroids(trainingData)
+    
+    [numTrials, numAngles] = size(trainingData);
+    % Initialize storage
+    centroids_x = zeros(numAngles,1);
+    centroids_y = zeros(numAngles,1);
+
+    for angle_num = 1:numAngles
+        final_x_positions = zeros(1, numTrials);
+        final_y_positions = zeros(1, numTrials);
+
+        for trial_num = 1:numTrials
+            final_x_positions(trial_num) = trainingData(trial_num, angle_num).handPos(1, end);
+            final_y_positions(trial_num) = trainingData(trial_num, angle_num).handPos(2, end);
+        end
+
+        % Compute centroid as mean position
+        centroids_x(angle_num) = mean(final_x_positions);
+        centroids_y(angle_num) = mean(final_y_positions);
+
+    end
+
+
+    end
 
