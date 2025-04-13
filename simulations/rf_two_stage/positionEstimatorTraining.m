@@ -7,7 +7,7 @@ function modelParameters = positionEstimatorTraining(trainingData)
     regressorBinSize = 20;         
     regressorWindowSize = 300;
     regressorStandardisation = true;
-    regressorBias = true;
+    regressorBias = false;
     
     [numTrials, numAngles] = size(trainingData);
 
@@ -18,7 +18,7 @@ function modelParameters = positionEstimatorTraining(trainingData)
     % [classifierFeaturesPCA, V_reduced_cls, X_mean_cls, X_std_cls, explained_var] = built_in_pca(classifierFeatures, 0.95, classifierStandardisation, classifierBias, classifierLabels);
     %PCA
     % built_in_pca_plot(classifierFeatures, classifierLabels)
-    [classifierFeaturesPCA, V_reduced_cls, X_mean_cls, X_std_cls, explained_var] = pcaReduction(classifierFeatures, 1, classifierStandardisation, classifierBias);
+    [classifierFeaturesPCA, V_reduced_cls, X_mean_cls, X_std_cls, explained_var] = pcaReduction(classifierFeatures, 0.95, classifierStandardisation, classifierBias);
 
     % plot_pca(classifierFeaturesPCA, classifierLabels, explained_var)
     
@@ -28,23 +28,26 @@ function modelParameters = positionEstimatorTraining(trainingData)
     % plot_lda(classifier, classifierFeaturesPCA, classifierLabels)
     % plot_pca_lda_combined(classifier, classifierFeaturesPCA, classifierLabels, explained_var)
 
-    %% 2. Regressor Training
-    regressors = cell(1, numAngles);
-    
-    %Regressor for each angle with PCA applied
+    %% 2. Regressor Training using rf
+    % Initialize
     for dir = 1:numAngles
         [allFeat, allPos] = preprocessForRegression(trainingData(:, dir), regressorBinSize, regressorWindowSize);
-        [Xpca, V_reduced_reg, X_mean_reg, X_std_reg] = pcaReduction(allFeat, 0.6, regressorStandardisation, regressorBias); 
-        Beta = Xpca \ allPos;
-
+        [Xpca, V_reduced_reg, X_mean_reg, X_std_reg] = pcaReduction(allFeat, 0.6, regressorStandardisation, regressorBias);
+    
+        % Train random forest for x and y separately
+        rf_x = TreeBagger(50, Xpca, allPos(:,1), 'Method', 'regression');
+        rf_y = TreeBagger(50, Xpca, allPos(:,2), 'Method', 'regression');
+    
         regressors{dir} = struct(...
+            'modelX', rf_x, ...
+            'modelY', rf_y, ...
             'projMatrix', V_reduced_reg, ...
-            'Beta', Beta, ...
             'mu', X_mean_reg, ...
             'std', X_std_reg, ...
             'binSize', regressorBinSize, ...
             'windowSize', regressorWindowSize);
     end
+    
 
     % plot_regressor_params(regressors)
     
@@ -59,7 +62,9 @@ function modelParameters = positionEstimatorTraining(trainingData)
             'projMatrix', V_reduced_cls, ...
             'X_mean', X_mean_cls, ...
             'X_std', X_std_cls), ...
-        'regressors', {regressors}, ... % 'centroids_x', centroids_x, ... % 'centroids_y', centroids_y, ...
+        'regressors', {regressors}, ...
+        'centroids_x', centroids_x, ...
+        'centroids_y', centroids_y, ...
         'featureMask', featureMask, ...
         'expectedFeatures', size(classifierFeaturesPCA, 2), ...
         'classifierParams', struct('binSize', classifierBinSize, 'windowSize', classifierWindowSize));%, ...
