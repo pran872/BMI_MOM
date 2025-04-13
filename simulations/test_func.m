@@ -75,7 +75,6 @@ function RMSE = testFunction_for_students_MTb(teamName)
                         modelParameters);
                     modelParameters = newParameters;
                 elseif nargout('positionEstimator') == 6
-                    % disp("Starting Position Estimator")
                     [decodedPosX, decodedPosY, newParameters, pred_classes, one_test_lda_proj, score] = positionEstimator(...
                         past_current_trial, ...
                         modelParameters, direc, pred_classes);
@@ -120,7 +119,6 @@ function RMSE = testFunction_for_students_MTb(teamName)
                         
                     end
                 elseif nargout('positionEstimator') == 4
-                    % disp("Starting Position Estimator")
                     [decodedPosX, decodedPosY, newParameters, pred_classes] = positionEstimator(...
                         past_current_trial, ...
                         modelParameters, direc, pred_classes);
@@ -185,8 +183,8 @@ end
 
 function plot_hand_dirs()
     figure(1)
-    xlabel('$X$ Hand Position', 'Interpreter', 'latex')
-    ylabel('$Y$ Hand Position', 'Interpreter', 'latex')
+    xlabel('$X$ Hand Position (cm)', 'Interpreter', 'latex')
+    ylabel('$Y$ Hand Position (cm)', 'Interpreter', 'latex')
     % set(gca, 'YTick', []); 
     % set(gca, 'YColor', 'none'); 
     legend('Predicted', 'Actual', 'Interpreter', 'latex')
@@ -194,7 +192,6 @@ function plot_hand_dirs()
     ax.TickLabelInterpreter = 'latex';
     grid off;
     set(gca, 'FontSize', 24);
-    % saveas(gcf, "../figures/all_trials_best_model_perf_cls.pdf")
 end
 
 function plot_confusion_matrix(true_classes, pred_classes)
@@ -415,7 +412,7 @@ function plot_regressor_rmse_comparison()
     xticks(1:length(angles));
     xticklabels(angles);
     xlabel("Angle ($^\circ$)", 'Interpreter', 'latex', 'FontSize', 24);
-    ylabel('RMSE', 'Interpreter', 'latex', 'FontSize', 24);
+    ylabel('RMSE (cm)', 'Interpreter', 'latex', 'FontSize', 24);
     legend({'Ideal classifier', 'Our classifier'}, ...
         'Interpreter', 'latex', 'Location', 'northeast', 'FontSize', 24);
     

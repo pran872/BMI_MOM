@@ -34,12 +34,6 @@ function [decodedPosX, decodedPosY, newParams, pred_classes, testLDAProj, score]
 
         % Perfect classification
         % predictedDir = direc;
-
-        % if predictedDir == direc
-        %     pred_classes(end+1) = 1;
-        % else
-        %     pred_classes(end+1) = 0;
-        % end
         pred_classes(end+1) = predictedDir;
          
     
@@ -76,40 +70,40 @@ function [decodedPosX, decodedPosY, newParams, pred_classes, testLDAProj, score]
             lastPosition = past_current_trial.startHandPos(1:2);
             
         else
-            decodedPosX = newPos(1);
-            decodedPosY = newPos(2);
-            % last_x = past_current_trial.decodedHandPos(1, end);
-            % last_y = past_current_trial.decodedHandPos(2, end);
+            % decodedPosX = newPos(1);
+            % decodedPosY = newPos(2);
+            last_x = past_current_trial.decodedHandPos(1, end);
+            last_y = past_current_trial.decodedHandPos(2, end);
             
         
-            % % Compute distances to all centroids
-            % distances = sqrt((modelParams.centroids_x - last_x).^2 + (modelParams.centroids_y - last_y).^2);
+            % Compute distances to all centroids
+            distances = sqrt((modelParams.centroids_x - last_x).^2 + (modelParams.centroids_y - last_y).^2);
         
-            % % Find the nearest centroid (closest movement direction)
-            % [min_distance, closest_idx] = min(distances);
+            % Find the nearest centroid (closest movement direction)
+            [min_distance, closest_idx] = min(distances);
         
             
-            % % Define stopping radius threshold (e.g., 5 mm)
-            % % Compute centroid std-based radius
-            % stopping_radius = 20;
+            % Define stopping radius threshold (e.g., 5 mm)
+            % Compute centroid std-based radius
+            stopping_radius = 20;
         
-            % % Check if the movement should stop
-            % if min_distance < stopping_radius
-            %     alpha = 0.25;  % Convergence factor (adjustable for smoother/slower movement)
-            %     beta = 0.1;   % Additional damping factor to reduce abrupt stops
+            % Check if the movement should stop
+            if min_distance < stopping_radius
+                alpha = 0.25;  % Convergence factor (adjustable for smoother/slower movement)
+                beta = 0.1;   % Additional damping factor to reduce abrupt stops
 
-            %     % Compute directional movement towards centroid
-            %     dx = newPos(1) - modelParams.centroids_x(closest_idx);
-            %     dy = newPos(2) - modelParams.centroids_y(closest_idx);
+                % Compute directional movement towards centroid
+                dx = newPos(1) - modelParams.centroids_x(closest_idx);
+                dy = newPos(2) - modelParams.centroids_y(closest_idx);
 
-            %     decodedPosX = modelParams.centroids_x(closest_idx) + alpha * dx + beta * sign(dx) * min(abs(dx), stopping_radius);
-            %     decodedPosY = modelParams.centroids_y(closest_idx) + alpha * dy + beta * sign(dy) * min(abs(dy), stopping_radius);
-            %     % decodedPosY = modelParams.centroids_y(closest_idx);
-            %     % newPos = lastPosition; % Keep position static
-            % else
-            %     decodedPosX = newPos(1);
-            %     decodedPosY = newPos(2);
-            % end
+                decodedPosX = modelParams.centroids_x(closest_idx) + alpha * dx + beta * sign(dx) * min(abs(dx), stopping_radius);
+                decodedPosY = modelParams.centroids_y(closest_idx) + alpha * dy + beta * sign(dy) * min(abs(dy), stopping_radius);
+                % decodedPosY = modelParams.centroids_y(closest_idx);
+                % newPos = lastPosition; % Keep position static
+            else
+                decodedPosX = newPos(1);
+                decodedPosY = newPos(2);
+            end
         end
     end
     
