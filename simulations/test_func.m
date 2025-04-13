@@ -1,8 +1,8 @@
 % Test Script to give to the students, March 2015]
 clc; clear all; close all;
-teamName = '/Users/pranathipoojary/Imperial/BMI/BMI_MOM/simulations/best_model'; %enter the name of the folder
+% teamName = '/Users/pranathipoojary/Imperial/BMI/BMI_MOM/simulations/best_model'; %enter the name of the folder
 % teamName = '/Users/pranathipoojary/Imperial/BMI/BMI_MOM/simulations/svr_two_stage'; %enter the name of the folder
-% teamName = '/Users/pranathipoojary/Imperial/BMI/BMI_MOM/simulations/knn_two_stage'; %enter the name of the folder
+teamName = '/Users/pranathipoojary/Imperial/BMI/BMI_MOM/simulations/knn_two_stage'; %enter the name of the folder
 % teamName = '/Users/pranathipoojary/Imperial/BMI/BMI_MOM/simulations/rf_two_stage'; %enter the name of the folder
 % teamName = '/Users/pranathipoojary/Imperial/BMI/BMI_MOM/simulations/log_reg_two_stage'; %enter the name of the folder
 
@@ -175,7 +175,7 @@ function RMSE = testFunction_for_students_MTb(teamName)
     % plot_confusion_matrix(true_classes, pred_classes)
     % plot_lda_test(all_test_lda_feats, true_classes, pred_classes)
     % plot_regressor_rmse(regressors_mse)
-    plot_regressor_rmse_comparison()
+    % plot_regressor_rmse_comparison()
 
     
     rmpath(genpath(teamName))
@@ -184,9 +184,9 @@ end
 function plot_hand_dirs()
     figure(1)
     xlabel('$X$ Hand Position (cm)', 'Interpreter', 'latex')
-    ylabel('$Y$ Hand Position (cm)', 'Interpreter', 'latex')
-    % set(gca, 'YTick', []); 
-    % set(gca, 'YColor', 'none'); 
+    % ylabel('$Y$ Hand Position (cm)', 'Interpreter', 'latex')
+    set(gca, 'YTick', []); 
+    set(gca, 'YColor', 'none'); 
     legend('Predicted', 'Actual', 'Interpreter', 'latex')
     ax = gca;
     ax.TickLabelInterpreter = 'latex';
