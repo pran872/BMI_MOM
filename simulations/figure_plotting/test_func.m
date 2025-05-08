@@ -2,7 +2,7 @@
 % NOTE: FINAL MODELS - LDA AND LINEAR REGRESSION - DO NOT USE ANY TOOLBOXES BUT OTHER MODELS EXPLORED MAY USE
 %       THE STATISTICS AND MACHINE LEARNING MATLAB TOOLBOX 
 clc; clear all; close all;
-teamName = '/Users/pranathipoojary/Imperial/BMI/BMI_MOM/simulations/figure_plotting'; %enter the name of the folder
+teamName = 'simulations/figure_plotting'; %enter the name of the folder
 
 tic;
 RMSE = testFunction_for_students_MTb(teamName)

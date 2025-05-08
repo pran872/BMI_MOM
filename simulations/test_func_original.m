@@ -2,7 +2,7 @@
 clc; clear all; close all;
 
 
-teamName = '/Users/pranathipoojary/Imperial/BMI/BMI_MOM/simulations/best_model'; %enter the name of the folder
+teamName = 'simulations/best_model'; %enter the name of the folder
 
 
 RMSE = testFunction_for_students_MTb(teamName)
