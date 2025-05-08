@@ -1,10 +1,8 @@
-function [decodedPosX, decodedPosY, newParams, pred_classes, testLDAProj, score] = positionEstimator(past_current_trial, modelParams, direc, pred_classes)
+function [decodedPosX, decodedPosY, newParams] = positionEstimator(past_current_trial, modelParams)
     persistent lastPosition;
     if isempty(past_current_trial.decodedHandPos)
         decodedPosX = past_current_trial.startHandPos(1);
         decodedPosY = past_current_trial.startHandPos(2);
-        testLDAProj = [];
-        score = [];
     else
         %% 1. Get Features
 
@@ -28,13 +26,10 @@ function [decodedPosX, decodedPosY, newParams, pred_classes, testLDAProj, score]
         finalFeatures(isnan(finalFeatures)) = 0;
         finalFeaturesPCA = finalFeatures * pcaParams.projMatrix;
 
-        testLDAProj = finalFeaturesPCA * modelParams.classifier.W(:, 1:2);
-
-        [predictedDir, score] = predictLDA(modelParams.classifier, finalFeaturesPCA);
+        predictedDir = predictLDA(modelParams.classifier, finalFeaturesPCA);
 
         % Perfect classification
         % predictedDir = direc;
-        pred_classes(end+1) = predictedDir;
          
     
         %% 3. Position Regression
@@ -70,36 +65,22 @@ function [decodedPosX, decodedPosY, newParams, pred_classes, testLDAProj, score]
             lastPosition = past_current_trial.startHandPos(1:2);
             
         else
-            % decodedPosX = newPos(1);
-            % decodedPosY = newPos(2);
             last_x = past_current_trial.decodedHandPos(1, end);
             last_y = past_current_trial.decodedHandPos(2, end);
             
-        
-            % Compute distances to all centroids
             distances = sqrt((modelParams.centroids_x - last_x).^2 + (modelParams.centroids_y - last_y).^2);
-        
-            % Find the nearest centroid (closest movement direction)
             [min_distance, closest_idx] = min(distances);
         
-            
-            % Define stopping radius threshold (e.g., 5 mm)
-            % Compute centroid std-based radius
             stopping_radius = 20;
-        
-            % Check if the movement should stop
             if min_distance < stopping_radius
-                alpha = 0.25;  % Convergence factor (adjustable for smoother/slower movement)
-                beta = 0.1;   % Additional damping factor to reduce abrupt stops
+                alpha = 0.25;
+                beta = 0.1;
 
-                % Compute directional movement towards centroid
                 dx = newPos(1) - modelParams.centroids_x(closest_idx);
                 dy = newPos(2) - modelParams.centroids_y(closest_idx);
 
                 decodedPosX = modelParams.centroids_x(closest_idx) + alpha * dx + beta * sign(dx) * min(abs(dx), stopping_radius);
                 decodedPosY = modelParams.centroids_y(closest_idx) + alpha * dy + beta * sign(dy) * min(abs(dy), stopping_radius);
-                % decodedPosY = modelParams.centroids_y(closest_idx);
-                % newPos = lastPosition; % Keep position static
             else
                 decodedPosX = newPos(1);
                 decodedPosY = newPos(2);
@@ -117,7 +98,7 @@ function [fr, bins] = preprocessSpikes(spikes, binSize)
     fr = (1000 / binSize) * permute(spikesBinned, [1,3,2]);
 end
 
-function [predictedDir, score] = predictLDA(ldaModel, Xtest)
+function [predictedDir] = predictLDA(ldaModel, Xtest)
     projectedData = Xtest * ldaModel.W;
 
     numClasses = size(ldaModel.classMeans, 1);
@@ -130,10 +111,6 @@ function [predictedDir, score] = predictLDA(ldaModel, Xtest)
         distances(:, i) = sum((projectedData - classMeanProj).^2, 2);
     end
 
-    % %Assign class with the smallest distance
-    % fprintf("\n")
-    % disp(distances)
-    score = min(distances);
     [~, minIdx] = min(distances, [], 2);
     predictedDir = ldaModel.classes(minIdx);
 end

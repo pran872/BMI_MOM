@@ -1,7 +1,7 @@
 function modelParameters = positionEstimatorTraining(trainingData)
 
-    classifierBinSize = 20;%[10 20 30 40 70];    bz10_400 (11.6812), bz20_400 (10.7579), bz30_300 (9.8619), bz40_400 (10.6651)
-    classifierWindowSize = 300;%[50 150 300 400]; 
+    classifierBinSize = 20;
+    classifierWindowSize = 300;
     classifierStandardisation = true;
     classifierBias = false;   
     regressorBinSize = 20;         
@@ -15,18 +15,10 @@ function modelParameters = positionEstimatorTraining(trainingData)
     [classifierFeatures, featureMask] = preprocessClassifierFeatures(trainingData, classifierBinSize, classifierWindowSize);
     classifierLabels = repelem(1:numAngles, numTrials)';
     
-    % [classifierFeaturesPCA, V_reduced_cls, X_mean_cls, X_std_cls, explained_var] = built_in_pca(classifierFeatures, 0.95, classifierStandardisation, classifierBias, classifierLabels);
-    %PCA
-    % built_in_pca_plot(classifierFeatures, classifierLabels)
-    [classifierFeaturesPCA, V_reduced_cls, X_mean_cls, X_std_cls, explained_var] = pcaReduction(classifierFeatures, 0.95, classifierStandardisation, classifierBias);
-
-    % plot_pca(classifierFeaturesPCA, classifierLabels, explained_var)
-    
+    [classifierFeaturesPCA, V_reduced_cls, X_mean_cls, X_std_cls] = pcaReduction(classifierFeatures, 0.95, classifierStandardisation, classifierBias);
     
     %Train LDA
     classifier = trainLDA(classifierFeaturesPCA, classifierLabels);
-    % plot_lda(classifier, classifierFeaturesPCA, classifierLabels)
-    % plot_pca_lda_combined(classifier, classifierFeaturesPCA, classifierLabels, explained_var)
 
     %% 2. Regressor Training
     regressors = cell(1, numAngles);
@@ -45,8 +37,6 @@ function modelParameters = positionEstimatorTraining(trainingData)
             'binSize', regressorBinSize, ...
             'windowSize', regressorWindowSize);
     end
-
-    % plot_regressor_params(regressors)
     
     [centroids_x,centroids_y] = computecentroids(trainingData);   
 
@@ -64,9 +54,7 @@ function modelParameters = positionEstimatorTraining(trainingData)
         'centroids_y', centroids_y, ...
         'featureMask', featureMask, ...
         'expectedFeatures', size(classifierFeaturesPCA, 2), ...
-        'classifierParams', struct('binSize', classifierBinSize, 'windowSize', classifierWindowSize));%, ...
-        % 'classificationAccPlus', 0, ...
-        % 'classificationAccMinus', 0);
+        'classifierParams', struct('binSize', classifierBinSize, 'windowSize', classifierWindowSize));
 
 end
 
@@ -83,13 +71,10 @@ function [features, featureMask] = preprocessClassifierFeatures(data, binSize, w
         end
     end
     
-    %Threshold variance
     featVars = var(features);
     % threshold = prctile(featVars, 10);
     validFeatures = featVars > 1e-6;
-    % disp(['Before filtering: ', num2str(size(features, 1)), ' x ', num2str(size(features, 2))]);
     features = features(:, validFeatures);
-    % disp(['After filtering: ', num2str(size(features, 1)), ' x ', num2str(size(features, 2))]);
     
     %Remove low variance features
     featureMask = false(1, numNeurons*(windowSize/binSize));
@@ -136,7 +121,7 @@ function ldaModel = trainLDA(X, Y)
 end
 
 
-function [Xpca, V_reduced, X_mean, X_std, explained_var] = pcaReduction(X, varianceThreshold, standardisation, bias)
+function [Xpca, V_reduced, X_mean, X_std] = pcaReduction(X, varianceThreshold, standardisation, bias)
     %Normalize data
     X_mean = mean(X, 1);
     if standardisation
@@ -204,7 +189,7 @@ function [centroids_x,centroids_y] = computecentroids(trainingData)
             final_y_positions(trial_num) = trainingData(trial_num, angle_num).handPos(2, end);
         end
 
-        % Compute centroid as mean position
+        % Centroid as mean position
         centroids_x(angle_num) = mean(final_x_positions);
         centroids_y(angle_num) = mean(final_y_positions);
 
@@ -212,204 +197,3 @@ function [centroids_x,centroids_y] = computecentroids(trainingData)
 
 
 end
-
-function plot_pca(classifierFeaturesPCA, classifierLabels, explained_var)
-    pc1_var = explained_var(1) * 100;
-    pc2_var = explained_var(2) * 100;
-
-    figure;
-    colors = turbo(8);
-    gscatter(classifierFeaturesPCA(:,1), classifierFeaturesPCA(:,2), classifierLabels, colors);
-
-    xlab = sprintf('PC1 (%.2f\\%%)', pc1_var);  % Escape % with double backslash
-    ylab = sprintf('PC2 (%.2f\\%%)', pc2_var);
-    xlabel(xlab, 'Interpreter', 'latex');
-    ylabel(ylab, 'Interpreter', 'latex');
-    title("Fully local")
-    angleLabels = {'$30^\circ$', '$70^\circ$', '$110^\circ$', '$150^\circ$', ...
-                   '$190^\circ$', '$230^\circ$', '$310^\circ$', '$350^\circ$'};
-    legend(angleLabels, 'Location', 'bestoutside', 'Interpreter', 'latex');
-    ax = gca;
-    ax.TickLabelInterpreter = 'latex';
-    grid off;
-    set(gca, 'FontSize', 14);
-    % filename = sprintf('../figures/pca_best_model.pdf');
-    % saveas(gcf, filename);
-    % close(gcf);
-end
-
-function [Xpca, V_reduced, X_mean, X_std, explained_var] = built_in_pca(X, varianceThreshold, standardisation, bias, classifierLabels)
-    X_mean = mean(X, 1);
-    if standardisation
-        X_std = std(X, [], 1);
-        X_std(X_std == 0) = 1;  % avoid division by zero
-        X_processed = (X - X_mean) ./ X_std;
-    else
-        X_std = [];
-        X_processed = X - X_mean;
-    end
-
-    [coeff, score, ~, ~, explained, ~] = pca(X_processed);
-
-    cumVar = cumsum(explained);
-    numPCs = find(cumVar >= varianceThreshold * 100, 1, 'first');
-
-    V_reduced = coeff(:, 1:numPCs);
-    Xpca = score(:, 1:numPCs);
-
-    if bias
-        Xpca = [Xpca, ones(size(Xpca, 1), 1)];
-    end
-
-    explained_var = explained / 100;
-
-    figure;
-    gscatter(score(:,1), score(:,2), classifierLabels, turbo(numel(unique(classifierLabels))));
-    xlabel(sprintf('PC1 (%.2f\\%%)', explained(1)), 'Interpreter', 'latex');
-    ylabel(sprintf('PC2 (%.2f\\%%)', explained(2)), 'Interpreter', 'latex');
-    title("Built in everythin + plot")
-
-    % Optional: format legend with angle labels
-    angleLabels = {'$30^\circ$', '$70^\circ$', '$110^\circ$', '$150^\circ$', ...
-                '$190^\circ$', '$230^\circ$', '$310^\circ$', '$350^\circ$'};
-    legend(angleLabels, 'Interpreter', 'latex', 'Location', 'bestoutside');
-
-    grid off;
-    set(gca, 'FontSize', 14, 'TickLabelInterpreter', 'latex');
-end
-
-
-function built_in_pca_plot(classifierFeatures, classifierLabels)
-    % X is your data matrix: rows = samples, columns = features
-    [coeff, score, latent, tsquared, explained, mu] = pca(classifierFeatures);
-
-    % Plot PC1 vs PC2
-    figure;
-    gscatter(score(:,1), score(:,2), classifierLabels, turbo(numel(unique(classifierLabels))));
-    xlabel(sprintf('PC1 (%.2f\\%%)', explained(1)), 'Interpreter', 'latex');
-    ylabel(sprintf('PC2 (%.2f\\%%)', explained(2)), 'Interpreter', 'latex');
-    title("Built in only plot");
-
-    % Optional: format legend with angle labels
-    angleLabels = {'$30^\circ$', '$70^\circ$', '$110^\circ$', '$150^\circ$', ...
-                '$190^\circ$', '$230^\circ$', '$310^\circ$', '$350^\circ$'};
-    legend(angleLabels, 'Interpreter', 'latex', 'Location', 'bestoutside');
-
-    grid off;
-    set(gca, 'FontSize', 14, 'TickLabelInterpreter', 'latex');
-end
-
-function plot_lda(classifier, classifierFeaturesPCA, classifierLabels)
-    lda_proj = classifierFeaturesPCA * classifier.W(:, 1:2);  % Project onto LDA1 and LDA2
-
-    figure;
-    colors = turbo(8);
-    gscatter(lda_proj(:,1), lda_proj(:,2), classifierLabels, colors);
-
-    xlabel('LDA 1', 'Interpreter', 'latex');
-    ylabel('LDA 2', 'Interpreter', 'latex');
-    title('LDA Projection of Classifier Features', 'Interpreter', 'latex');
-
-    angleLabels = {'$30^\circ$', '$70^\circ$', '$110^\circ$', '$150^\circ$', ...
-                '$190^\circ$', '$230^\circ$', '$310^\circ$', '$350^\circ$'};
-    legend(angleLabels, 'Interpreter', 'latex', 'Location', 'bestoutside');
-
-    grid off;
-    set(gca, 'FontSize', 14, 'TickLabelInterpreter', 'latex');
-
-end
-
-function plot_pca_lda_combined(classifier, classifierFeaturesPCA, classifierLabels, explained_var)
-    angleLabels = {'$30^\circ$', '$70^\circ$', '$110^\circ$', '$150^\circ$', ...
-                   '$190^\circ$', '$230^\circ$', '$310^\circ$', '$350^\circ$'};
-    colors = turbo(8);
-    pc1_var = explained_var(1) * 100;
-    pc2_var = explained_var(2) * 100;
-
-    % Create figure and tiled layout
-    f = figure;
-    f.Position = [100, 100, 900, 400];  % Set figure size
-    t = tiledlayout(2, 2, 'TileSpacing', 'compact');
-    
-    % PCA subplot (left, tall)
-    nexttile([2 1])
-    % disp(size(classifierFeaturesPCA))
-    gscatter(classifierFeaturesPCA(:,1), classifierFeaturesPCA(:,2), ...
-             classifierLabels, colors, '.', 12, 'off');
-    xlabel(sprintf('PC1 (%.2f\\%%)', pc1_var), 'Interpreter', 'latex');
-    ylabel(sprintf('PC2 (%.2f\\%%)', pc2_var), 'Interpreter', 'latex');
-    xlim(gca, [-12 14])
-    ylim(gca, [-10 14]);
-    set(gca, 'FontSize', 20, 'TickLabelInterpreter', 'latex');
-    grid off;
-
-    % LDA subplot (right, tall)
-    lda_proj = classifierFeaturesPCA * classifier.W(:, 1:2);
-    % disp(size(lda_proj))
-    nexttile([2 1])
-    gscatter(lda_proj(:,1), lda_proj(:,2), classifierLabels, ...
-             colors, '.', 12, 'off');
-    xlabel('LDA 1', 'Interpreter', 'latex');
-    yl = ylabel('LDA 2', 'Interpreter', 'latex');
-    yl.Position(1) = yl.Position(1) + 0.15;  % Reduce ylabel distance
-    ylim(gca, [-0.75 0.8])
-    xlim(gca, [-0.9 0.9])
-    yticks(gca, [-0.5 0 0.5])
-    set(gca, 'FontSize', 20, 'TickLabelInterpreter', 'latex');
-    grid off;
-
-    % Create proxy legend handles with larger markers
-    nexttile(t, 1); % Ensure an active axes
-    legendHandles = gobjects(length(angleLabels), 1);
-    hold on;
-    for i = 1:length(angleLabels)
-        legendHandles(i) = plot(NaN, NaN, '.', ...
-            'Color', colors(i,:), ...
-            'MarkerSize', 24);
-    end
-    hold off;
-
-    % Shared legend
-    lgd = legend(legendHandles, angleLabels, ...
-        'Interpreter', 'latex', ...
-        'Orientation', 'horizontal', ...
-        'Box', 'off');
-    lgd.Layout.Tile = 'south';
-    lgd.FontSize = 20;
-
-    % Export as high-quality vector PDF
-    % exportgraphics(f, '../figures/pca_lda_combined2.pdf', 'ContentType', 'vector');
-end
-
-function plot_regressor_params(regressors, N)
-    % regressors: cell array of regressor structs
-    % N: number of top PCA components to inspect
-
-    angles = {'$30^\circ$', '$70^\circ$', '$110^\circ$', '$150^\circ$', ...
-              '$190^\circ$', '$230^\circ$', '$310^\circ$', '$350^\circ$'};
-
-    for dir = 1:length(regressors)
-        Beta = regressors{dir}.Beta;  % (numFeatures+1) x 2
-        Beta = Beta(1:end-1, :);      % Remove bias row if present
-
-        % Combine x and y weight magnitude
-        importance = vecnorm(Beta, 2, 2);  % Euclidean norm per feature
-
-        % Plot only first N PCA features
-        N=20;
-        figure;
-        bar(importance(1:N));
-        title(sprintf('Feature Importance for %s', angles{dir}), 'Interpreter', 'latex');
-        xlabel('PCA feature index', 'Interpreter', 'latex');
-        ylabel('Combined weight magnitude', 'Interpreter', 'latex');
-        set(gca, 'TickLabelInterpreter', 'latex', 'FontSize', 14);
-
-        % Compute and print percentage of weight in top N
-        totalWeight = sum(importance);
-        topWeight = sum(importance(1:N));
-        fprintf('Regressor for %s: %.1f%% of weight in first %d PCA features\n', ...
-                angles{dir}, 100 * topWeight / totalWeight, N);
-    end
-end
-
-
