@@ -1,7 +1,6 @@
 # Brain-machine interfaces: Neural Decoding of Arm Trajectories using LDA-based Classification and Regression
 Authors: Nicolas Dehandschoewercker, Sonya Kalsi, Matthieu Pallud, Pranathi Poojary
 MATLAB 2024b
-Some models may require the Statistics and Machine Learning MATLAB toolbox.
 
 # Best model
 Our best model was an LDA classifier with linear regression (RMSE 9.85cm). Parameters can be found in our report and the best_model folder.

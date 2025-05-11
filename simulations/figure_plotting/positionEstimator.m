@@ -1,5 +1,4 @@
-% NOTE: FINAL MODELS - LDA AND LINEAR REGRESSION - DO NOT USE ANY TOOLBOXES BUT OTHER MODELS EXPLORED MAY USE
-%       THE STATISTICS AND MACHINE LEARNING MATLAB TOOLBOX 
+% Authors: Nicolas Dehandschoewercker, Sonya Kalsi, Matthieu Pallud, Pranathi Poojary
 function [decodedPosX, decodedPosY, newParams, predClasses, one_test_lda_proj] = positionEstimator(past_current_trial, modelParams, trueDir, predClasses, clsMethod, regMethod)
     persistent lastPosition;
     if isempty(past_current_trial.decodedHandPos)

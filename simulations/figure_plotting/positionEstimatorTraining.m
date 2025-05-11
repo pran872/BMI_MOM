@@ -1,5 +1,4 @@
-% NOTE: FINAL MODELS - LDA AND LINEAR REGRESSION - DO NOT USE ANY TOOLBOXES BUT OTHER MODELS EXPLORED MAY USE
-%       THE STATISTICS AND MACHINE LEARNING MATLAB TOOLBOX 
+% Authors: Nicolas Dehandschoewercker, Sonya Kalsi, Matthieu Pallud, Pranathi Poojary
 function modelParameters = positionEstimatorTraining(trainingData, clsMethod, regMethod)
     classifierBinSize = 20;
     classifierWindowSize = 300;

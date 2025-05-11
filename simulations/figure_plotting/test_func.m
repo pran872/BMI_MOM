@@ -1,6 +1,4 @@
 % Test Script
-% NOTE: FINAL MODELS - LDA AND LINEAR REGRESSION - DO NOT USE ANY TOOLBOXES BUT OTHER MODELS EXPLORED MAY USE
-%       THE STATISTICS AND MACHINE LEARNING MATLAB TOOLBOX 
 clc; clear all; close all;
 teamName = 'simulations/figure_plotting'; %enter the name of the folder
 
