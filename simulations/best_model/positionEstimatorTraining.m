@@ -1,3 +1,4 @@
+% Authors: Nicolas Dehandschoewercker, Sonya Kalsi, Matthieu Pallud, Pranathi Poojary
 function modelParameters = positionEstimatorTraining(trainingData)
 
     classifierBinSize = 20;

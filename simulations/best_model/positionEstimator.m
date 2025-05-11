@@ -1,3 +1,4 @@
+% Authors: Nicolas Dehandschoewercker, Sonya Kalsi, Matthieu Pallud, Pranathi Poojary
 function [decodedPosX, decodedPosY, newParams] = positionEstimator(past_current_trial, modelParams)
     persistent lastPosition;
     if isempty(past_current_trial.decodedHandPos)
