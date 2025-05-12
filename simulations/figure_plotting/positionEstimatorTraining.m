@@ -84,7 +84,9 @@ function modelParameters = positionEstimatorTraining(trainingData, clsMethod, re
         'classifierParams', struct('binSize', classifierBinSize, 'windowSize', classifierWindowSize));
 
     %% 4. Plot
-    plot_pca_lda_combined(classifier, classifierFeaturesPCA, classifierLabels, explained_var)
+    % This plot requires stat and ml toolbox
+    % plot_pca_lda_combined(classifier, classifierFeaturesPCA, classifierLabels, explained_var)
+
     % plot_pca(classifierFeaturesPCA, classifierLabels, explained_var)
     % plot_lda(classifier, classifierFeaturesPCA, classifierLabels)
     % plot_regressor_params(regressors, 20) % Weight magnitude against PCA feature index
