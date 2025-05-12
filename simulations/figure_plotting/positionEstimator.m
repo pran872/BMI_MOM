@@ -40,7 +40,7 @@ function [decodedPosX, decodedPosY, newParams, predClasses, one_test_lda_proj] =
         end
 
         % Perfect classification
-        % predictedDir = trueDir;
+        predictedDir = trueDir;
 
         predClasses(end+1) = predictedDir;
          

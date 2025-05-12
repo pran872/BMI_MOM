@@ -42,6 +42,12 @@ function RMSE = testFunction_for_students_MTb(teamName)
     true_classes = [];
     all_test_lda_feats = [];
     
+     % for rms
+    n_timesteps = 50;
+    time_from_onset = (0:n_timesteps-1) * 20;
+    sqErrorByTime = zeros(8, n_timesteps);
+    countsByTime = zeros(8, n_timesteps);
+    
     for tr=1:size(testData,1)
         fprintf('Decoding block %d/%d\n', tr, size(testData,1));
 
@@ -83,8 +89,16 @@ function RMSE = testFunction_for_students_MTb(teamName)
                 decodedPos = [decodedPosX; decodedPosY];
                 decodedHandPos = [decodedHandPos decodedPos];
 
-                regressors_mse{direc} = regressors_mse{direc} + norm(testData(tr,direc).handPos(1:2,t) - decodedPos)^2;
-                meanSqError = meanSqError + norm(testData(tr,direc).handPos(1:2,t) - decodedPos)^2;
+                currentError = norm(testData(tr,direc).handPos(1:2,t) - decodedPos)^2;
+                regressors_mse{direc} = regressors_mse{direc} + currentError;
+                meanSqError = meanSqError + currentError;
+                
+                % Track RMSE over time
+                timeIndex = floor((t - 320) / 20) + 1;
+                if timeIndex <= n_timesteps
+                    sqErrorByTime(direc, timeIndex) = sqErrorByTime(direc, timeIndex) + currentError;
+                    countsByTime(direc, timeIndex) = countsByTime(direc, timeIndex) + 1;
+                end
             end
             
             figure(1)
@@ -116,7 +130,7 @@ function RMSE = testFunction_for_students_MTb(teamName)
     plot_regressor_rmse_perfect_imperfect()
 
     plot_regressor_rmse(regressors_mse)
-    % plot_confusion_matrix_heatmap(true_classes, pred_classes)
+    plot_rmse_over_time(sqErrorByTime, countsByTime, time_from_onset, true_classes, pred_classes)
     
     rmpath(genpath(teamName))
 end
@@ -348,4 +362,45 @@ function plot_regressor_rmse(regressors_mse)
     ylabel('RMSE', 'Interpreter', 'latex');
     xlabel("Angle ($^\circ$)", 'Interpreter', 'latex')
     set(gca, 'TickLabelInterpreter', 'latex', 'FontSize', 14);
+end
+
+function plot_rmse_over_time(sqErrorByTime, countsByTime, time_from_onset, true_classes, pred_classes)
+    figure('Position', [100, 100, 800, 600]);
+    hold on;
+    
+    angles = {'$30^\circ$', '$70^\circ$', '$110^\circ$', '$150^\circ$', ...
+              '$190^\circ$', '$230^\circ$', '$310^\circ$', '$350^\circ$'};
+    
+    colors = [0, 114, 189; 217, 83, 25; 237, 177, 32; 126, 47, 142; ...
+              119, 172, 48; 77, 190, 238; 162, 20, 47; 76, 76, 76]/255;
+    
+    rmseByTime = zeros(8, size(sqErrorByTime, 2));
+    for d = 1:8
+        for t = 1:size(sqErrorByTime, 2)
+            if countsByTime(d, t) > 0
+                rmseByTime(d, t) = sqrt(sqErrorByTime(d, t) / countsByTime(d, t));
+            end
+        end
+        plot(time_from_onset + 320, rmseByTime(d,:), 'Color', colors(d,:), 'LineWidth', 2);
+    end
+    
+    overallRmse = zeros(1, size(sqErrorByTime, 2));
+    for t = 1:size(sqErrorByTime, 2)
+        totalError = sum(sqErrorByTime(:, t));
+        totalCount = sum(countsByTime(:, t));
+        if totalCount > 0
+            overallRmse(t) = sqrt(totalError / totalCount);
+        end
+    end
+    
+    plot(time_from_onset + 320, overallRmse, 'k', 'LineWidth', 3);
+    
+    xlabel('Time (ms)', 'Interpreter', 'latex', 'FontSize', 24);
+    ylabel('RMSE (cm)', 'Interpreter', 'latex', 'FontSize', 24);
+    legend([angles, {'Overall'}], 'Interpreter', 'latex', 'Location', 'eastoutside', 'FontSize', 16);
+    set(gca, 'TickLabelInterpreter', 'latex', 'FontSize', 20, 'LineWidth', 1.5);
+    xlim([320 600]);
+    ylim([0 15]);
+    box off;
+    exportgraphics(gcf, 'figures/report_figures/rmse_time_perfect_classification_ieee.pdf', 'ContentType', 'vector', 'BackgroundColor', 'none', 'Resolution', 300);
 end
