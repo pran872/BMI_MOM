@@ -397,8 +397,8 @@ function plot_rmse_over_time(sqErrorByTime, countsByTime, time_from_onset, true_
     
     xlabel('Time (ms)', 'Interpreter', 'latex', 'FontSize', 24);
     ylabel('RMSE (cm)', 'Interpreter', 'latex', 'FontSize', 24);
-    legend([angles, {'Overall'}], 'Interpreter', 'latex', 'Location', 'eastoutside', 'FontSize', 16);
-    set(gca, 'TickLabelInterpreter', 'latex', 'FontSize', 20, 'LineWidth', 1.5);
+    legend([angles, {'Overall'}], 'Interpreter', 'latex', 'Location', 'eastoutside', 'FontSize', 24);
+    set(gca, 'TickLabelInterpreter', 'latex', 'FontSize', 24, 'LineWidth', 1.5);
     xlim([320 600]);
     ylim([0 15]);
     box off;
